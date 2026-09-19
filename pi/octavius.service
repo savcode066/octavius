@@ -1,0 +1,17 @@
+[Unit]
+Description=Octavius control center
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=octavius
+WorkingDirectory=/home/octavius/pi
+Environment=OCTAVIUS_TLS_CERT=/home/octavius/pi/certs/octavius.crt
+Environment=OCTAVIUS_TLS_KEY=/home/octavius/pi/certs/octavius.key
+ExecStart=/home/octavius/pi/.venv/bin/python /home/octavius/pi/app.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

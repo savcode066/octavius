@@ -62,6 +62,30 @@ https://10.42.0.1:5000
 The browser will warn that the certificate is self-signed. Continue to the
 site for this local test, then tap “Enable camera + mic”.
 
+## Start automatically at boot
+
+After the certificate exists and the virtual environment has been installed,
+copy the included service file into systemd:
+
+```bash
+sudo cp ~/pi/octavius.service /etc/systemd/system/octavius.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now octavius.service
+```
+
+After that, the control center starts when the Pi powers on, even when no SSH
+session is open. Check its status with:
+
+```bash
+sudo systemctl status octavius.service
+```
+
+View live server logs with:
+
+```bash
+journalctl -u octavius.service -f
+```
+
 The page has buttons and a command box. You can type commands such as
 `YAW_LEFT`, `PITCH_UP`, `CLAW_OPEN`, or `PITCH_ANGLE 95`.
 
