@@ -1,6 +1,7 @@
 # Raspberry Pi control server
 
-The Pi hosts the iPhone control page on the `Octavius` Wi-Fi network and forwards named commands to the Arduino Nano over USB.
+The Pi hosts the Octavius control page on the `Octavius` Wi-Fi network and
+forwards validated commands to the Arduino Nano over USB.
 
 ## Install
 
@@ -36,11 +37,24 @@ With an iPhone or laptop connected to the Pi's `Octavius` hotspot, open:
 http://10.42.0.1:5000
 ```
 
+The page has buttons and a command box. You can type commands such as
+`YAW_LEFT`, `PITCH_UP`, `CLAW_OPEN`, `YAW_RIGHT 250`, or `PITCH_ANGLE 95`.
+
+To use a terminal on the Pi instead, leave `app.py` running and open another
+terminal:
+
+```bash
+python console.py
+```
+
+Type `HELP` for the command list, or `QUIT` to exit.
+
 ## API
 
 - `GET /health` - server status.
-- `GET /command?cmd=WAVE` - send a named arm command.
+- `GET /command?cmd=WAVE` - send a safe arm command.
 - `POST /command` with JSON `{ "command": "CLAW_CLOSE" }` - send a command.
+- `POST /command` also accepts bounded values such as `{ "command": "YAW_LEFT 250" }`.
 - `POST /photo` with multipart field `photo` - save the latest iPhone photo for later vision processing.
 
 The camera upload endpoint intentionally stores photos only. Add vision after the arm mechanics and manual controls work reliably.
