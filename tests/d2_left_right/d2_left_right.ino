@@ -4,45 +4,42 @@ Servo yawServo;
 
 const byte YAW_PIN = 2;
 
-// A continuous-rotation servo uses speed commands, not angle commands.
-// Swap these values if the directions are reversed.
-const int STOP_US = 1500;
-const int LEFT_US = 1475;
-const int RIGHT_US = 1525;
+// This test assumes D2 is a normal positional servo.
+// Swap the left and right values if the directions are reversed.
+const int YAW_HOME = 90;
+const int YAW_LEFT = 80;
+const int YAW_RIGHT = 100;
 
-const unsigned long MOVE_TIME_MS = 180;
+const unsigned long MOVE_TIME_MS = 500;
 const unsigned long PAUSE_TIME_MS = 1000;
 
-void stopServo() {
-  yawServo.writeMicroseconds(STOP_US);
-}
-
-void logEvent(const char *eventName) {
-  Serial.print(millis());
-  Serial.print(" ms | ");
-  Serial.println(eventName);
+void moveTo(int angle) {
+  yawServo.write(angle);
+  delay(MOVE_TIME_MS);
 }
 
 void setup() {
   Serial.begin(115200);
   yawServo.attach(YAW_PIN);
-  stopServo();
-  logEvent("D2 test started; servo stopped");
+  yawServo.write(YAW_HOME);
+  Serial.println("D2 positional left/right test started");
   delay(PAUSE_TIME_MS);
 }
 
 void loop() {
-  logEvent("LEFT start");
-  yawServo.writeMicroseconds(LEFT_US);
-  delay(MOVE_TIME_MS);
-  stopServo();
-  logEvent("LEFT stop");
+  Serial.println("D2 left");
+  moveTo(YAW_LEFT);
   delay(PAUSE_TIME_MS);
 
-  logEvent("RIGHT start");
-  yawServo.writeMicroseconds(RIGHT_US);
-  delay(MOVE_TIME_MS);
-  stopServo();
-  logEvent("RIGHT stop");
+  Serial.println("D2 home");
+  moveTo(YAW_HOME);
+  delay(PAUSE_TIME_MS);
+
+  Serial.println("D2 right");
+  moveTo(YAW_RIGHT);
+  delay(PAUSE_TIME_MS);
+
+  Serial.println("D2 home");
+  moveTo(YAW_HOME);
   delay(PAUSE_TIME_MS);
 }
