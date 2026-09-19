@@ -6,24 +6,43 @@
     <title>Octavius Control</title>
     <style>
       :root { color-scheme: dark; font-family: system-ui, sans-serif; }
-      body { max-width: 34rem; margin: 0 auto; padding: 1.25rem; background: #10151a; color: #ecf3f6; }
+      body { max-width: 36rem; margin: 0 auto; padding: 1.25rem; background: #10151a; color: #ecf3f6; }
       h1 { margin-bottom: 0; }
+      h2 { margin: 1.5rem 0 .5rem; font-size: 1.1rem; }
       p { color: #b6c5ca; }
       .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .75rem; }
       button { min-height: 3.5rem; border: 0; border-radius: .75rem; background: #197d75; color: white; font-size: 1rem; font-weight: 700; }
       button:active { background: #0e554f; transform: scale(.98); }
+      button:disabled { opacity: .45; }
       .danger { background: #9d3535; }
+      .secondary { background: #3a505a; }
       .command-row { display: flex; gap: .5rem; margin: 1rem 0; }
       input { min-width: 0; flex: 1; border: 1px solid #50636a; border-radius: .5rem; background: #1b252a; color: white; padding: .75rem; font-size: 1rem; }
       .send { min-height: auto; padding: .75rem 1rem; }
+      .camera-box { overflow: hidden; border-radius: .75rem; background: #050708; }
+      video { display: block; width: 100%; min-height: 12rem; object-fit: cover; background: #050708; }
+      .media-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .75rem; margin-top: .75rem; }
       code { color: #9ee7dc; }
-      #status { min-height: 1.5rem; margin-top: 1rem; }
+      #status, #media-status { min-height: 1.5rem; margin-top: 1rem; }
     </style>
   </head>
   <body>
     <h1>Octavius</h1>
     <p>One-arm control panel</p>
 
+    <h2>Camera and microphone</h2>
+    <div class="camera-box">
+      <video id="preview" autoplay playsinline muted></video>
+    </div>
+    <div class="media-grid">
+      <button id="start-media">Enable camera + mic</button>
+      <button id="stop-media" class="secondary" disabled>Stop media</button>
+      <button id="capture" class="secondary" disabled>Capture frame</button>
+      <button id="record" class="secondary" disabled>Record microphone</button>
+    </div>
+    <p id="media-status">Camera and microphone are off.</p>
+
+    <h2>Arm controls</h2>
     <div class="grid">
       <button data-command="YAW_LEFT">Yaw left</button>
       <button data-command="YAW_RIGHT">Yaw right</button>
@@ -44,11 +63,9 @@
     <datalist id="command-list">
       <option value="YAW_LEFT">
       <option value="YAW_RIGHT">
-      <option value="YAW_LEFT 250">
-      <option value="YAW_RIGHT 250">
       <option value="PITCH_UP">
       <option value="PITCH_DOWN">
-      <option value="PITCH_ANGLE 90">
+      <option value="PITCH_ANGLE 95">
       <option value="CLAW_OPEN">
       <option value="CLAW_CLOSE">
       <option value="CLAW_ANGLE 55">
@@ -57,12 +74,21 @@
       <option value="STOP">
     </datalist>
 
-    <p>Examples: <code>YAW_LEFT 250</code>, <code>PITCH_ANGLE 95</code>, <code>CLAW_ANGLE 55</code></p>
     <p id="status" aria-live="polite">Connecting…</p>
 
     <script>
       const status = document.querySelector('#status');
+      const mediaStatus = document.querySelector('#media-status');
       const commandInput = document.querySelector('#command');
+      const preview = document.querySelector('#preview');
+      const startMedia = document.querySelector('#start-media');
+      const stopMedia = document.querySelector('#stop-media');
+      const captureButton = document.querySelector('#capture');
+      const recordButton = document.querySelector('#record');
+
+      let mediaStream = null;
+      let mediaRecorder = null;
+      let audioChunks = [];
 
       async function sendCommand(command) {
         status.textContent = `Sending ${command}…`;
@@ -81,6 +107,118 @@
         }
       }
 
+      async function enableMedia() {
+        if (!window.isSecureContext && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+          mediaStatus.textContent = 'Camera and mic may require HTTPS in Safari.';
+        }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          mediaStatus.textContent = 'This browser does not provide camera/mic access here.';
+          return;
+        }
+
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          preview.srcObject = mediaStream;
+          startMedia.disabled = true;
+          stopMedia.disabled = false;
+          captureButton.disabled = false;
+          recordButton.disabled = false;
+          mediaStatus.textContent = 'Camera and microphone enabled.';
+        } catch (error) {
+          mediaStatus.textContent = `Permission failed: ${error.message}`;
+        }
+      }
+
+      function disableMedia() {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+        if (mediaStream) mediaStream.getTracks().forEach((track) => track.stop());
+        mediaStream = null;
+        preview.srcObject = null;
+        startMedia.disabled = false;
+        stopMedia.disabled = true;
+        captureButton.disabled = true;
+        recordButton.disabled = true;
+        recordButton.textContent = 'Record microphone';
+        mediaStatus.textContent = 'Camera and microphone are off.';
+      }
+
+      function captureFrame() {
+        if (!mediaStream || !preview.videoWidth) {
+          mediaStatus.textContent = 'Wait for the camera preview before capturing.';
+          return;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = preview.videoWidth;
+        canvas.height = preview.videoHeight;
+        canvas.getContext('2d').drawImage(preview, 0, 0);
+        canvas.toBlob(async (blob) => {
+          if (!blob) return;
+          const form = new FormData();
+          form.append('photo', blob, 'camera.jpg');
+          mediaStatus.textContent = 'Uploading camera frame…';
+          try {
+            const response = await fetch('/photo', { method: 'POST', body: form });
+            const result = await response.json();
+            mediaStatus.textContent = response.ok ? 'Camera frame saved on the Pi.' : result.error;
+          } catch (error) {
+            mediaStatus.textContent = `Frame upload failed: ${error.message}`;
+          }
+        }, 'image/jpeg', .85);
+      }
+
+      function recorderOptions() {
+        const formats = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'];
+        const supported = formats.find((format) => MediaRecorder.isTypeSupported(format));
+        return supported ? { mimeType: supported } : {};
+      }
+
+      async function uploadAudio(blob) {
+        const isMp4 = blob.type.includes('mp4');
+        const extension = isMp4 ? 'm4a' : 'webm';
+        const form = new FormData();
+        form.append('audio', blob, `recording.${extension}`);
+        mediaStatus.textContent = 'Uploading microphone recording…';
+        try {
+          const response = await fetch('/audio', { method: 'POST', body: form });
+          const result = await response.json();
+          mediaStatus.textContent = response.ok ? 'Microphone recording saved on the Pi.' : result.error;
+        } catch (error) {
+          mediaStatus.textContent = `Audio upload failed: ${error.message}`;
+        }
+      }
+
+      function toggleRecording() {
+        if (!mediaStream || !window.MediaRecorder) {
+          mediaStatus.textContent = 'Audio recording is not supported in this browser.';
+          return;
+        }
+
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+          mediaRecorder.stop();
+          recordButton.textContent = 'Record microphone';
+          return;
+        }
+
+        audioChunks = [];
+        mediaRecorder = new MediaRecorder(mediaStream, recorderOptions());
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) audioChunks.push(event.data);
+        };
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+          uploadAudio(blob);
+        };
+        mediaRecorder.start();
+        recordButton.textContent = 'Stop recording';
+        mediaStatus.textContent = 'Recording microphone…';
+      }
+
+      startMedia.addEventListener('click', enableMedia);
+      stopMedia.addEventListener('click', disableMedia);
+      captureButton.addEventListener('click', captureFrame);
+      recordButton.addEventListener('click', toggleRecording);
+
       document.querySelectorAll('[data-command]').forEach((button) => {
         button.addEventListener('click', () => sendCommand(button.dataset.command));
       });
@@ -90,9 +228,7 @@
       });
 
       commandInput.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' && commandInput.value.trim()) {
-          sendCommand(commandInput.value);
-        }
+        if (event.key === 'Enter' && commandInput.value.trim()) sendCommand(commandInput.value);
       });
 
       fetch('/health')

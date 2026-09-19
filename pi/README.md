@@ -38,7 +38,12 @@ http://10.42.0.1:5000
 ```
 
 The page has buttons and a command box. You can type commands such as
-`YAW_LEFT`, `PITCH_UP`, `CLAW_OPEN`, `YAW_RIGHT 250`, or `PITCH_ANGLE 95`.
+`YAW_LEFT`, `PITCH_UP`, `CLAW_OPEN`, or `PITCH_ANGLE 95`.
+
+The media panel can request access to the iPhone camera and microphone. It can
+save a still camera frame to `pi/uploads/latest.jpg` and a short microphone
+recording to `pi/audio_uploads/`. Safari may require the page to be served over
+HTTPS before it will grant camera and microphone access.
 
 To use a terminal on the Pi instead, leave `app.py` running and open another
 terminal:
@@ -54,7 +59,8 @@ Type `HELP` for the command list, or `QUIT` to exit.
 - `GET /health` - server status.
 - `GET /command?cmd=WAVE` - send a safe arm command.
 - `POST /command` with JSON `{ "command": "CLAW_CLOSE" }` - send a command.
-- `POST /command` also accepts bounded values such as `{ "command": "YAW_LEFT 250" }`.
-- `POST /photo` with multipart field `photo` - save the latest iPhone photo for later vision processing.
+- `POST /command` also accepts bounded values such as `{ "command": "PITCH_ANGLE 95" }`.
+- `POST /photo` with multipart field `photo` - save the latest iPhone camera frame.
+- `POST /audio` with multipart field `audio` - save the latest iPhone microphone recording.
 
-The camera upload endpoint intentionally stores photos only. Add vision after the arm mechanics and manual controls work reliably.
+The media endpoints store the latest inputs for the Huawei OMNI integration.

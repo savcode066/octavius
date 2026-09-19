@@ -16,6 +16,7 @@ from flask import Flask, jsonify, request, send_from_directory
 SERIAL_PORT = os.environ.get("OCTAVIUS_SERIAL_PORT", "/dev/ttyACM0")
 SERIAL_BAUD = int(os.environ.get("OCTAVIUS_SERIAL_BAUD", "115200"))
 UPLOAD_DIRECTORY = Path(__file__).parent / "uploads"
+AUDIO_DIRECTORY = Path(__file__).parent / "audio_uploads"
 
 FIXED_COMMANDS = {
     "STOP",
@@ -139,6 +140,31 @@ def photo():
     destination = UPLOAD_DIRECTORY / "latest.jpg"
     uploaded_photo.save(destination)
     return jsonify(status="photo saved", path=str(destination.name))
+
+
+@app.post("/audio")
+def audio():
+    """Accept the latest microphone recording from the phone."""
+    uploaded_audio = request.files.get("audio")
+    if uploaded_audio is None:
+        return jsonify(error="Send an audio recording using the form field named 'audio'."), 400
+
+    AUDIO_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    mime_type = uploaded_audio.mimetype or "application/octet-stream"
+    if "mp4" in mime_type or "m4a" in mime_type:
+        extension = ".m4a"
+    elif "ogg" in mime_type:
+        extension = ".ogg"
+    else:
+        extension = ".webm"
+
+    destination = AUDIO_DIRECTORY / f"latest{extension}"
+    uploaded_audio.save(destination)
+    return jsonify(
+        status="audio saved",
+        path=str(destination.name),
+        mime_type=mime_type,
+    )
 
 
 if __name__ == "__main__":
