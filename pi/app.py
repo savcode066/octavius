@@ -8,6 +8,7 @@ The Nano remains responsible for motion limits and gentle servo movement.
 import os
 import time
 from pathlib import Path
+from threading import Lock
 
 import serial
 from flask import Flask, jsonify, request, send_from_directory
@@ -37,6 +38,7 @@ COMMAND_ALIASES = {
 
 app = Flask(__name__, static_folder="web")
 serial_connection = None
+serial_lock = Lock()
 
 
 def normalize_command(raw_command: str) -> str:
@@ -86,10 +88,12 @@ def nano_connection():
 
 
 def send_command(command: str) -> str:
-    connection = nano_connection()
-    connection.write(f"{command}\n".encode("utf-8"))
-    connection.flush()
-    return connection.readline().decode("utf-8", errors="replace").strip()
+    # Prevent two browser taps from interleaving bytes on the serial link.
+    with serial_lock:
+        connection = nano_connection()
+        connection.write(f"{command}\n".encode("utf-8"))
+        connection.flush()
+        return connection.readline().decode("utf-8", errors="replace").strip()
 
 
 @app.get("/")
