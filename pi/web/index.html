@@ -201,7 +201,8 @@
         }
 
         audioChunks = [];
-        mediaRecorder = new MediaRecorder(mediaStream, recorderOptions());
+        const microphoneStream = new MediaStream(mediaStream.getAudioTracks());
+        mediaRecorder = new MediaRecorder(microphoneStream, recorderOptions());
         mediaRecorder.ondataavailable = (event) => {
           if (event.data.size > 0) audioChunks.push(event.data);
         };
