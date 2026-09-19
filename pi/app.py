@@ -17,6 +17,8 @@ SERIAL_PORT = os.environ.get("OCTAVIUS_SERIAL_PORT", "/dev/ttyACM0")
 SERIAL_BAUD = int(os.environ.get("OCTAVIUS_SERIAL_BAUD", "115200"))
 UPLOAD_DIRECTORY = Path(__file__).parent / "uploads"
 AUDIO_DIRECTORY = Path(__file__).parent / "audio_uploads"
+TLS_CERT_FILE = os.environ.get("OCTAVIUS_TLS_CERT", "")
+TLS_KEY_FILE = os.environ.get("OCTAVIUS_TLS_KEY", "")
 
 FIXED_COMMANDS = {
     "STOP",
@@ -168,4 +170,10 @@ def audio():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    if bool(TLS_CERT_FILE) != bool(TLS_KEY_FILE):
+        raise SystemExit("Set both OCTAVIUS_TLS_CERT and OCTAVIUS_TLS_KEY, or neither.")
+
+    ssl_context = (TLS_CERT_FILE, TLS_KEY_FILE) if TLS_CERT_FILE else None
+    scheme = "https" if ssl_context else "http"
+    print(f"Octavius server: {scheme}://0.0.0.0:5000")
+    app.run(host="0.0.0.0", port=5000, debug=False, ssl_context=ssl_context)

@@ -109,7 +109,8 @@
 
       async function enableMedia() {
         if (!window.isSecureContext && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
-          mediaStatus.textContent = 'Camera and mic may require HTTPS in Safari.';
+          mediaStatus.textContent = 'Camera and mic require HTTPS. Open the HTTPS Octavius address.';
+          return;
         }
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
           mediaStatus.textContent = 'This browser does not provide camera/mic access here.';

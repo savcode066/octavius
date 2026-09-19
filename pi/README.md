@@ -37,6 +37,31 @@ With an iPhone or laptop connected to the Pi's `Octavius` hotspot, open:
 http://10.42.0.1:5000
 ```
 
+Camera and microphone access require HTTPS. Create a local certificate on the
+Pi once, then start the server with TLS enabled:
+
+```bash
+mkdir -p ~/pi/certs
+openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
+  -keyout ~/pi/certs/octavius.key \
+  -out ~/pi/certs/octavius.crt \
+  -subj "/CN=10.42.0.1" \
+  -addext "subjectAltName=IP:10.42.0.1"
+
+export OCTAVIUS_TLS_CERT=~/pi/certs/octavius.crt
+export OCTAVIUS_TLS_KEY=~/pi/certs/octavius.key
+python app.py
+```
+
+Then open this address instead:
+
+```text
+https://10.42.0.1:5000
+```
+
+The browser will warn that the certificate is self-signed. Continue to the
+site for this local test, then tap “Enable camera + mic”.
+
 The page has buttons and a command box. You can type commands such as
 `YAW_LEFT`, `PITCH_UP`, `CLAW_OPEN`, or `PITCH_ANGLE 95`.
 
