@@ -17,20 +17,32 @@ void stopServo() {
   yawServo.writeMicroseconds(STOP_US);
 }
 
+void logEvent(const char *eventName) {
+  Serial.print(millis());
+  Serial.print(" ms | ");
+  Serial.println(eventName);
+}
+
 void setup() {
+  Serial.begin(115200);
   yawServo.attach(YAW_PIN);
   stopServo();
+  logEvent("D2 test started; servo stopped");
   delay(PAUSE_TIME_MS);
 }
 
 void loop() {
+  logEvent("LEFT start");
   yawServo.writeMicroseconds(LEFT_US);
   delay(MOVE_TIME_MS);
   stopServo();
+  logEvent("LEFT stop");
   delay(PAUSE_TIME_MS);
 
+  logEvent("RIGHT start");
   yawServo.writeMicroseconds(RIGHT_US);
   delay(MOVE_TIME_MS);
   stopServo();
+  logEvent("RIGHT stop");
   delay(PAUSE_TIME_MS);
 }
