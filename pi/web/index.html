@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Octavius Control</title>
+    <style>
+      :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+      body { max-width: 32rem; margin: 0 auto; padding: 1.25rem; background: #10151a; color: #ecf3f6; }
+      h1 { margin-bottom: 0; }
+      p { color: #b6c5ca; }
+      .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .75rem; }
+      button { min-height: 4.25rem; border: 0; border-radius: .75rem; background: #197d75; color: white; font-size: 1rem; font-weight: 700; }
+      button:active { background: #0e554f; transform: scale(.98); }
+      .danger { background: #9d3535; }
+      #status { min-height: 1.5rem; margin-top: 1rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Octavius</h1>
+    <p>One-arm control panel</p>
+    <div class="grid">
+      <button data-command="WAVE">Wave</button>
+      <button data-command="HOME">Home</button>
+      <button data-command="ELBOW_LEFT">Elbow left</button>
+      <button data-command="ELBOW_RIGHT">Elbow right</button>
+      <button data-command="ELBOW_UP">Elbow up</button>
+      <button data-command="ELBOW_DOWN">Elbow down</button>
+      <button data-command="CLAW_OPEN">Open claw</button>
+      <button class="danger" data-command="CLAW_CLOSE">Close claw</button>
+    </div>
+    <p id="status" aria-live="polite">Connecting…</p>
+    <script>
+      const status = document.querySelector('#status');
+      async function sendCommand(command) {
+        status.textContent = `Sending ${command}…`;
+        try {
+          const response = await fetch('/command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command })
+          });
+          const result = await response.json();
+          status.textContent = response.ok ? `${command}: ${result.nano_response || 'sent'}` : result.error;
+        } catch (error) {
+          status.textContent = `Connection error: ${error.message}`;
+        }
+      }
+      document.querySelectorAll('[data-command]').forEach((button) => {
+        button.addEventListener('click', () => sendCommand(button.dataset.command));
+      });
+      fetch('/health').then(() => { status.textContent = 'Ready'; }).catch(() => { status.textContent = 'Pi is not responding'; });
+    </script>
+  </body>
+</html>
