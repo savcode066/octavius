@@ -23,12 +23,14 @@ const int PITCH_HOME = 90;
 const int PITCH_MIN = 70;
 const int PITCH_MAX = 110;
 const int PITCH_STEP = 5;
+const int PITCH_WAVE_STEP = 3;
 
 const int CLAW_OPEN = 45;
 const int CLAW_CLOSED = 70;
 const int CLAW_MIN = 35;
 const int CLAW_MAX = 80;
 const unsigned int POSITION_STEP_DELAY_MS = 22;
+const unsigned long YAW_WAVE_MS = 110;
 
 int pitchAngle = PITCH_HOME;
 int clawAngle = CLAW_OPEN;
@@ -71,11 +73,19 @@ void home() {
 }
 
 void wave() {
-  moveYaw(YAW_LEFT_US, YAW_STEP_MS);
+  // Very small pitch movement first, then four short yaw movements.
+  movePosition(pitchServo, pitchAngle, pitchAngle - PITCH_WAVE_STEP, PITCH_MIN, PITCH_MAX);
   delay(150);
-  moveYaw(YAW_RIGHT_US, YAW_STEP_MS);
+  movePosition(pitchServo, pitchAngle, pitchAngle + PITCH_WAVE_STEP, PITCH_MIN, PITCH_MAX);
+  delay(200);
+
+  moveYaw(YAW_LEFT_US, YAW_WAVE_MS);
   delay(150);
-  moveYaw(YAW_LEFT_US, YAW_STEP_MS);
+  moveYaw(YAW_RIGHT_US, YAW_WAVE_MS);
+  delay(150);
+  moveYaw(YAW_LEFT_US, YAW_WAVE_MS);
+  delay(150);
+  moveYaw(YAW_RIGHT_US, YAW_WAVE_MS);
   home();
 }
 
