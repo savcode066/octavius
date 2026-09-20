@@ -100,3 +100,16 @@ def test_angle_above_the_range_is_refused(simulator):
 def test_wave_is_gone(simulator):
     states = run(simulator, ["WAVE"])
     assert "ERR unknown command" in states[-1]["output"]
+
+
+def test_every_reply_carries_the_angles(simulator):
+    """The Pi logs the reply verbatim, so this is what shows up in journalctl."""
+    states = run(simulator, ["PITCH_UP", "YAW_LEFT"])
+    assert "OK PITCH_UP yaw=90 pitch=85 claw=90" in states[-1]["output"]
+    assert "OK YAW_LEFT yaw=85 pitch=85 claw=90" in states[-1]["output"]
+
+
+def test_status_reports_without_moving(simulator):
+    states = run(simulator, ["PITCH_UP", "STATUS"])
+    assert "OK STATUS yaw=90 pitch=85 claw=90" in states[-1]["output"]
+    assert final(states) == {"step": "STATUS", "yaw": 90, "pitch": 85, "claw": 90}

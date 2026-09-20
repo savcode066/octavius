@@ -23,7 +23,11 @@ against a mechanical stop still counts. Lower `YAW_STEP`, `PITCH_STEP` or
 `CLAW_STEP` for finer control.
 
 Commands: YAW_LEFT, YAW_RIGHT, PITCH_UP, PITCH_DOWN, CLAW_INC, CLAW_DEC,
-HOME, STOP, PITCH_ANGLE 0..180, CLAW_ANGLE 0..180.
+HOME, STOP, STATUS, PITCH_ANGLE 0..180, CLAW_ANGLE 0..180.
+Every OK ends with ` yaw=.. pitch=.. claw=..`, which the Pi writes to its log.
+STATUS reports those without moving anything. They are the angles last
+commanded, not measured, so a servo stalled against its stop still reports the
+angle it was told to reach.
 HOME returns all three joints to 90. Nothing moves on its own, so STOP only
 reasserts the current position. It does not cut servo power; keep a physical
 servo power switch accessible.

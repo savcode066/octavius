@@ -36,8 +36,13 @@ class SerialStub {
   int available() { return static_cast<int>(incoming.size() - cursor); }
   int read() { return cursor < incoming.size() ? incoming[cursor++] : -1; }
   void print(const char *text) { outgoing += text; }
+  void print(int value) { outgoing += std::to_string(value); }
   void println(const char *text) {
     outgoing += text;
+    outgoing += "\n";
+  }
+  void println(int value) {
+    outgoing += std::to_string(value);
     outgoing += "\n";
   }
 };

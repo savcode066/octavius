@@ -153,3 +153,13 @@ def test_nano_err_keeps_serial_open():
 def test_ok_must_match_command():
     arm = _arm(["OK CLAW_DEC", "OK YAW_LEFT"])
     assert arm.send("YAW_LEFT") == "OK YAW_LEFT"
+
+
+def test_reply_may_carry_the_angle_report():
+    arm = _arm(["OK YAW_LEFT yaw=85 pitch=90 claw=90"])
+    assert arm.send("YAW_LEFT") == "OK YAW_LEFT yaw=85 pitch=90 claw=90"
+
+
+def test_reply_for_another_command_is_still_ignored():
+    arm = _arm(["OK YAW_RIGHT yaw=95 pitch=90 claw=90", "OK YAW_LEFT yaw=85 pitch=90 claw=90"])
+    assert arm.send("YAW_LEFT") == "OK YAW_LEFT yaw=85 pitch=90 claw=90"

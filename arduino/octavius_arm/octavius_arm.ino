@@ -40,7 +40,7 @@ void stepYaw(int delta) {
 }
 
 void stepPitch(int delta) {
-  pitchAngle = constrain(pitchAngle + delta, ANGLE_LOW, ANGLE_HIGH);
+  pitchAngle = constrain(pitchAngle + delta, 60, 120);
   pitch.write(pitchAngle);
 }
 
@@ -54,6 +54,17 @@ void stopAll() {
   yaw.write(yawAngle);
   pitch.write(pitchAngle);
   claw.write(clawAngle);
+}
+
+// Tails every OK so the Pi log records where each joint was left. These are
+// the angles last commanded, not measured: a stalled servo still reports them.
+void reportAngles() {
+  Serial.print(" yaw=");
+  Serial.print(yawAngle);
+  Serial.print(" pitch=");
+  Serial.print(pitchAngle);
+  Serial.print(" claw=");
+  Serial.println(clawAngle);
 }
 
 void handle(char *line) {
@@ -71,7 +82,14 @@ void handle(char *line) {
 
   if (!strcmp(verb, "STOP") && !arg) {
     stopAll();
-    Serial.println("OK STOP");
+    Serial.print("OK STOP");
+    reportAngles();
+    return;
+  }
+
+  if (!strcmp(verb, "STATUS") && !arg) {
+    Serial.print("OK STATUS");
+    reportAngles();
     return;
   }
 
@@ -146,7 +164,8 @@ void handle(char *line) {
   }
 
   Serial.print("OK ");
-  Serial.println(verb);
+  Serial.print(verb);
+  reportAngles();
 }
 
 void setup() {

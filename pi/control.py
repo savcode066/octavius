@@ -9,7 +9,7 @@ from serial.tools import list_ports
 
 logger = logging.getLogger("octavius.control")
 
-FIXED = {"STOP", "HOME", "CLAW_INC", "CLAW_DEC",
+FIXED = {"STOP", "STATUS", "HOME", "CLAW_INC", "CLAW_DEC",
          "PITCH_UP", "PITCH_DOWN", "YAW_LEFT", "YAW_RIGHT"}
 ALIASES = {"LEFT": "YAW_LEFT", "RIGHT": "YAW_RIGHT", "UP": "PITCH_UP",
            "DOWN": "PITCH_DOWN",
@@ -77,7 +77,9 @@ class Arm:
             deadline = time.monotonic() + 3
             while time.monotonic() < deadline:
                 reply = self.connection.readline().decode("ascii", errors="replace").strip()
-                if reply == "OK " + command.split()[0]:
+                # The Nano tails each OK with " yaw=.. pitch=.. claw=..".
+                expected = "OK " + command.split()[0]
+                if reply == expected or reply.startswith(expected + " "):
                     logger.info("serial reply command=%s reply=%s", command, reply)
                     return reply
                 if reply.startswith("ERR"):
