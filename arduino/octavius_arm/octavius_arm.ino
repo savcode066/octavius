@@ -7,20 +7,22 @@ const byte YAW_PIN = 2;
 const byte PITCH_PIN = 3;
 const byte CLAW_PIN = 4;
 
-const int YAW_LOW = 0;
-const int YAW_HIGH = 180;
-const int YAW_STEP = 5;
+// These limits must stay inside what the linkage can actually reach. A limit
+// wider than the mechanism drives the servo into its stop, where it stalls
+// while the target keeps counting past it; the joint then ignores further
+// presses until the opposite direction has unwound that gap. Widen only after
+// checking the endpoint with the linkage disconnected.
+const int YAW_LOW = 60;
+const int YAW_HIGH = 140;
+const int YAW_STEP = 3;
 
-const int PITCH_LOW = 0;
-const int PITCH_HIGH = 180;
-const int PITCH_STEP = 5;
-
-const int CLAW_LOW = 0;
-const int CLAW_HIGH = 180;
+const int PITCH_LOW = 60;
+const int PITCH_HIGH = 140;
+const int PITCH_STEP = 3;
 
 const int CLAW_MIN = 80;
 const int CLAW_MAX = 125;
-const int CLAW_STEP = 5;
+const int CLAW_STEP = 2;
 
 Servo yaw;
 Servo pitch;
@@ -171,13 +173,8 @@ void handle(char *line) {
     int value = atoi(arg);
     bool isPitch = !strcmp(verb, "PITCH_ANGLE");
 
-    int minimum = isPitch
-      ? PITCH_LOW
-      : min(CLAW_LOW, CLAW_HIGH);
-
-    int maximum = isPitch
-      ? PITCH_HIGH
-      : max(CLAW_LOW, CLAW_HIGH);
+    int minimum = isPitch ? PITCH_LOW : CLAW_MIN;
+    int maximum = isPitch ? PITCH_HIGH : CLAW_MAX;
 
     if (value < minimum || value > maximum) {
       Serial.println("ERR angle range");

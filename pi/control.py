@@ -25,7 +25,8 @@ def normalize_command(value):
     verb = ALIASES.get(parts[0], parts[0])
     if verb in FIXED and len(parts) == 1:
         return verb
-    ranges = {"PITCH_ANGLE": (60, 140), "CLAW_ANGLE": (60, 140)}
+    # Must match PITCH_LOW/HIGH and CLAW_MIN/MAX in the Nano sketch.
+    ranges = {"PITCH_ANGLE": (60, 140), "CLAW_ANGLE": (80, 125)}
     if verb in ranges and len(parts) == 2 and re.fullmatch(r"[0-9]{1,3}", parts[1]):
         low, high = ranges[verb]
         if low <= int(parts[1]) <= high:

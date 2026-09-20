@@ -20,13 +20,16 @@ grounds and Nano GND together. Signal wires go to D2/D3/D4; the Pi connects
 to Nano USB. Verify the powered CrunchLabs board's pinout and power routing
 before combining its power with Nano USB.
 
-Yaw, pitch and claw move in 5-degree steps that accumulate onto the target.
-The claw is limited to servo angles 80–125 (CLAW_MIN/CLAW_MAX). Calibrate
+Yaw and pitch move in 3-degree steps, the claw in 2-degree steps, and taps
+accumulate onto the target. Yaw and pitch are limited to 60–140 and the claw
+to 80–125 (CLAW_MIN/CLAW_MAX). A limit wider than the linkage can reach makes
+the servo stall at its stop while the target counts past it, so the joint then
+ignores presses until the opposite direction unwinds that gap. Calibrate
 these values with the linkage disconnected;
 slow movement does not limit force. Startup positions are commanded immediately.
 
 Commands: YAW_LEFT, YAW_RIGHT, PITCH_UP, PITCH_DOWN, CLAW_INC, CLAW_DEC,
-WAVE, HOME, STOP, PITCH_ANGLE 60..140, CLAW_ANGLE 60..140.
+WAVE, HOME, STOP, PITCH_ANGLE 60..140, CLAW_ANGLE 80..125.
 Commands acknowledge when accepted, not when motion completes.
 Only WAVE blocks further commands; other moves accumulate. STOP is read during movement,
 cancels the wave, and holds positional joints. It does not cut servo power.

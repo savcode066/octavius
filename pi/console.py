@@ -20,7 +20,7 @@ def main():
             if command in {"QUIT","EXIT"}: break
             if command=="HELP":
                 print("YAW_LEFT YAW_RIGHT PITCH_UP PITCH_DOWN CLAW_INC CLAW_DEC WAVE HOME STOP")
-                print("PITCH_ANGLE 95 | CLAW_ANGLE 55");continue
+                print("PITCH_ANGLE 95 | CLAW_ANGLE 100");continue
             if command:
                 try: print(client.post("/command",json={"command":command}).json())
                 except httpx.RequestError: print("Could not reach the control server.")

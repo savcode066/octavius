@@ -18,13 +18,13 @@ The code problems below are confirmed, but none has been established as the caus
 - The firmware handles STOP during movement when it receives it, but the web-to-serial path does not guarantee delivery. STOP also holds positional servos; it is not a power cut.
 - Needed fix: prioritize STOP through a single serial owner and test it during connection setup and delayed acknowledgements without interleaving serial messages.
 
-### 2. A normal busy reply closes the serial connection
+### 2. A joint limit wider than the linkage parks the target past the stop
 
-- Location: [pi/control.py](pi/control.py), `Arm.send()` exception handling; [main sketch](arduino/octavius_arm/octavius_arm.ino), `handle()`.
-- The Nano acknowledges a movement when it accepts it. It may still be moving when the user taps again, so the next command can legitimately return `ERR busy`.
-- The Pi treats that reply as a connection failure, closes the port, and clears the connection. The next request must reopen the port and wait through the two-second connection delay.
-- Reproduced with a fake `ERR busy` response: the port was closed and the saved connection became `None`.
-- Needed fix: keep the connection open for normal firmware rejections and distinguish them from transport failures. Show that the arm is busy without treating it as disconnected.
+- Location: [main sketch](arduino/octavius_arm/octavius_arm.ino), the range constants.
+- Commit `f77bcff` widened pitch from its calibrated `60..140` to `0..180` and gave yaw the same `0..180`. Presses accumulate onto the target, so a burst of taps drives the target to a limit the arm cannot reach. The servo stalls against its mechanical stop while the target keeps counting past it, and the joint then ignores every further press in that direction until the opposite direction has unwound the gap.
+- Reproduced by replaying the 2026-09-20 log through [tests/test_firmware.py](tests/test_firmware.py): 117 `PITCH_UP` presses drove the servo to angle `0`, a full 90 degrees past home.
+- Matches the reported symptom that up and right do nothing from rest but move a long way after the arm has first been brought down or left.
+- Fixed by restoring `60..140` for pitch and yaw. The values are conservative and still unverified against the physical arm.
 
 ### 3. The connected labels overstate what has been checked
 
@@ -38,7 +38,7 @@ The code problems below are confirmed, but none has been established as the caus
 - Location: [pi/control.py](pi/control.py), the serial reply loop in `Arm.send()`.
 - The code accepts any line starting with `OK ` without matching the command that was sent. A delayed reply can therefore be attributed to the wrong request.
 - Reproduced by sending `YAW_LEFT` and returning `OK CLAW_DEC` from a fake Nano: the Pi accepted it.
-- Needed fix: match the expected command acknowledgement. Request IDs would also distinguish repeated commands. Acceptance and completed motion should remain separate states.
+- Fixed: `Arm.send()` now requires the reply to name the command it sent. Request IDs would also distinguish repeated commands. Acceptance and completed motion remain separate states.
 
 ### 5. Practice mode's media wording is misleading
 
@@ -51,13 +51,13 @@ The code problems below are confirmed, but none has been established as the caus
 
 | Pin | Current behavior | What remains unverified |
 | --- | --- | --- |
-| D2 | Continuous rotation; left `87`, right `93`, stop `90`; each movement lasts 110 ms | Whether these speed values overcome the servo's deadband and the arm's load, and whether `90` actually stops it |
-| D3 | Positional; up reduces the target by 3 degrees, down increases it by 3; range 60 to 140 | Physical direction and visible movement under load; pressing farther at a limit deliberately does nothing |
-| D4 | Positional; requested open `75`, closed `120`; reversed linkage sends servo commands 125 and 80 | Whether those positions actually open and close the mounted tongs without binding |
+| D2 | Positional yaw; 3 degrees per press; range 60 to 140 | Whether 60 and 140 are inside the real travel, and which way is left |
+| D3 | Positional pitch; 3 degrees per press; range 60 to 140 | Whether 60 and 140 are inside the real travel, and visible movement under load |
+| D4 | Positional claw; 2 degrees per press; range 80 to 125 | Whether 80 and 125 are the true closed and open endpoints without binding |
 
-Only D4 was reversed in the latest code. D2 and D3 directions were left as requested. The team has not yet confirmed successful operation after uploading that revision. The requested claw positions are mapped through the reversed linkage, but this does not establish correct physical endpoints.
+Every limit above is a guess carried over from earlier commits, not a measured endpoint. A limit that is too narrow only costs reach; one that is too wide stalls the servo against its stop, which draws stall current and can strip gears. Widen them only after checking each endpoint with the linkage disconnected.
 
-The normal requested claw targets are 45 degrees apart, but this is not a universal movement limit. Startup immediately commands the open position from an unknown physical position. Typed `CLAW_ANGLE` commands accept 60 through 140, and the reversed linkage maps those requests before sending them to D4. Calibrate endpoints with the linkage disconnected.
+The claw spans 45 degrees, so at 2 degrees per press it takes 22 presses to cross. Startup and `HOME` command the midpoint, 102, from an unknown physical position. Typed `CLAW_ANGLE` commands accept 80 through 125 on both the Pi and the Nano.
 
 Servo supply voltage/current, common ground, signal wiring, and mechanical binding have not been measured in this review. They remain possible causes of no movement, not diagnosed faults.
 
@@ -72,18 +72,19 @@ Servo supply voltage/current, common ground, signal wiring, and mechanical bindi
 
 - Website access: an old Python process occupied port 5000 and the old service repeatedly failed. After switching to the supplied Gunicorn service, the team obtained HTTP 200 health responses and confirmed the site loaded. A hotspot firewall block was not established by the earlier evidence.
 - Camera and microphone permission: the team explicitly confirmed both now work. They should not be treated as current blockers.
-- D4 direction and calibration: the repository now requests open `75` and closed `120`, reverses them for the D4 linkage, and allows 60 through 140. Physical verification is still pending.
+- Claw open and close: the claw is now incremental like pitch and yaw. `CLAW_INC` and `CLAW_DEC` step 2 degrees inside 80 to 125; the fixed open and closed positions are gone.
+- A firmware rejection no longer closes the serial port, so an `ERR` reply no longer costs a two-second reconnect on the next press.
 
 ## Next diagnostic steps
 
 1. With the arm supported and motion kept clear, press STOP once and record the exact message below the controls. `OK STOP` verifies that the Nano accepted that command; it does not test servo movement.
 2. Press one small movement once, then wait. Record both the exact reply and which joint physically moved. An OK reply with no movement calls for calibration, power, wiring, and mechanical checks. A timeout or ERR reply calls for serial-path diagnosis.
-3. Confirm D4's open and closed endpoints with the linkage unloaded before relying on the website's claw buttons. Keep those values consistent with the main sketch's allowed range.
-4. Address the STOP, busy-response, and acknowledgement bugs before testing repeated commands. Verify manual movement before enabling paid voice interpretation.
+3. Calibrate each endpoint with the linkage unloaded, then widen `YAW_LOW`/`YAW_HIGH`, `PITCH_LOW`/`PITCH_HIGH` and `CLAW_MIN`/`CLAW_MAX` to what you measured. Keep `ranges` in [pi/control.py](pi/control.py) in step with them.
+4. Address the remaining STOP bug before testing repeated commands. Verify manual movement before enabling paid voice interpretation.
 
 ## Verification for this report
 
-- Existing Python suite: 18 tests passed using `tests/test_app.py`.
+- Python suite: 27 tests pass, including [tests/test_firmware.py](tests/test_firmware.py), which compiles the sketch for the desktop with g++ and replays recorded click bursts through it. A simulated servo always reaches its target, so those tests cover stepping and limits only, never physical movement.
 - Separate fake-serial checks reproduced STOP rejection, connection closure on `ERR busy`, and acceptance of an unrelated OK reply. These checks did not connect to hardware.
 - Pin mappings, motion limits, HOME behavior, connection labels, and practice uploads were checked in the source.
 - No new firmware compilation or physical motion test was performed for this documentation change. The passing software tests do not resolve the reported hardware symptom.
