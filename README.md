@@ -57,3 +57,13 @@ Built by Dinesh Sinnathamby, Roy Lu, and Savio Joseph Benher.
 Multimodal integration: Huawei OMNI Live challenge, using Qwen OMNI through Yibu.
 Request format is based on the supplied Yibu examples dated 2026-09-18.
 MIT licensed; see [LICENSE](LICENSE).
+
+## Pick up / Put down
+
+The "Take control" panel has **Pick up** and **Put down** buttons and an object width field (cm).
+
+- **Pick up** turns the width into a claw angle, closes the claw to it, then writes pitch 60.
+- **Put down** writes pitch 110, then opens the claw (angle 110).
+- **STOP MOVEMENT** aborts either one part-way.
+
+The claw is inverted (above 90 opens, below 90 closes). Width to angle is a straight line through two measured points, set in `pi/.env` (defaults: 7 cm = 80, 9 cm = 85). To recalibrate, put a known-width object in the claw, use the typed `CLAW_ANGLE n` command to find the angle that just grips it, do the same for a second object, then update the four `OCTAVIUS_CLAW_*` values. Widths outside the calibrated range are rejected. `OCTAVIUS_PICKUP_PITCH`, `OCTAVIUS_PUTDOWN_PITCH`, `OCTAVIUS_CLAW_OPEN_ANGLE` and `OCTAVIUS_GRIP_MARGIN_DEG` are also tunable there.

@@ -6,7 +6,7 @@ let recordingEpoch = 0;
 
 async function api(path, options = {}) {
   const abort = new AbortController();
-  const timer = setTimeout(() => abort.abort(), path === '/interpret' ? 42000 : 8000);
+  const timer = setTimeout(() => abort.abort(), path === '/interpret' ? 42000 : ['/pickup', '/putdown'].includes(path) ? 30000 : 8000);
   try {
     const response = await fetch(path, {...options, headers: {'X-Octavius': '1', ...(options.headers || {})}, signal: abort.signal});
     const data = await response.json();
@@ -47,6 +47,20 @@ async function command(cmd) {
     $('status').textContent = result.nano_response;
   } catch(e) { $('status').textContent=e.message; }
 }
+async function task(path, body, label) {
+  pending = null; $('confirm').hidden = true;
+  $('pickup').disabled = $('putdown').disabled = true;
+  try {
+    if (!paired) throw new Error('Enter the pairing code first.');
+    $('status').textContent = label + '…';
+    const result = await jsonPost(path, body);
+    $('status').textContent = result.aborted ? label + ' stopped.'
+      : label + ' done: ' + result.steps.join(', ') + '.';
+  } catch(e) { $('status').textContent = e.message; }
+  finally { $('pickup').disabled = $('putdown').disabled = false; }
+}
+$('pickup').onclick = () => task('/pickup', {width_cm: $('width').valueAsNumber}, 'Picking up');
+$('putdown').onclick = () => task('/putdown', {}, 'Putting down');
 document.querySelectorAll('[data-command]').forEach(b => b.onclick = () => command(b.dataset.command));
 $('stop').onclick = () => command('STOP');
 $('command-form').onsubmit = e => { e.preventDefault(); command($('command').value); };

@@ -163,3 +163,55 @@ def test_reply_may_carry_the_angle_report():
 def test_reply_for_another_command_is_still_ignored():
     arm = _arm(["OK YAW_RIGHT yaw=95 pitch=90 claw=90", "OK YAW_LEFT yaw=85 pitch=90 claw=90"])
     assert arm.send("YAW_LEFT") == "OK YAW_LEFT yaw=85 pitch=90 claw=90"
+
+
+def test_width_to_claw_angle(monkeypatch):
+    from grasp import width_to_claw_angle
+    for name in ("OCTAVIUS_CLAW_NARROW_CM", "OCTAVIUS_CLAW_NARROW_ANGLE", "OCTAVIUS_CLAW_WIDE_CM",
+                 "OCTAVIUS_CLAW_WIDE_ANGLE", "OCTAVIUS_GRIP_MARGIN_DEG"):
+        monkeypatch.delenv(name, raising=False)
+    assert width_to_claw_angle(7) == 80
+    assert width_to_claw_angle(9) == 85
+    assert width_to_claw_angle(8) == 83
+    monkeypatch.setenv("OCTAVIUS_GRIP_MARGIN_DEG", "2")
+    assert width_to_claw_angle(9) == 83
+
+@pytest.mark.parametrize("width", [None, "8", True, float("nan"), 6.9, 9.1, 0, -3])
+def test_bad_widths(width):
+    from grasp import width_to_claw_angle
+    with pytest.raises(ValueError): width_to_claw_angle(width)
+
+def test_pickup_and_putdown_routes(client):
+    assert client.post("/pickup", json={"width_cm": 8}, headers=HEADERS).status_code == 401
+    pair(client)
+    assert client.post("/pickup", json={"width_cm": 8}).status_code == 403
+    picked = client.post("/pickup", json={"width_cm": 8}, headers=HEADERS).json
+    assert picked["steps"] == ["CLAW_ANGLE 83", "PITCH_ANGLE 60"] and not picked["aborted"]
+    assert client.post("/pickup", json={"width_cm": 20}, headers=HEADERS).status_code == 400
+    assert client.post("/pickup", json={}, headers=HEADERS).status_code == 400
+    put = client.post("/putdown", headers=HEADERS).json
+    assert put["steps"] == ["PITCH_ANGLE 110", "CLAW_ANGLE 110"]
+
+def test_task_ramps_each_joint_in_order():
+    arm = _arm(["OK STATUS yaw=90 pitch=90 claw=90"] + ["OK CLAW_ANGLE"] * 4 + ["OK PITCH_ANGLE"] * 15)
+    arm.simulate = False
+    with patch.object(arm, "_pause", return_value=False):
+        result = arm.run_task("pick_up", 8)
+    sent = [w.decode().strip() for w in arm.connection.written]
+    assert sent[0] == "STATUS"
+    assert [c.split()[0] for c in sent[1:]] == ["CLAW_ANGLE"] * 4 + ["PITCH_ANGLE"] * 15
+    assert sent[4] == "CLAW_ANGLE 83" and sent[-1] == "PITCH_ANGLE 60"
+    assert result["steps"] == ["CLAW_ANGLE 83", "PITCH_ANGLE 60"]
+
+def test_stop_aborts_a_running_task():
+    arm = _arm(["OK STATUS yaw=90 pitch=90 claw=90", "OK CLAW_ANGLE", "OK STOP"])
+    calls = []
+    def pause(seconds):
+        calls.append(seconds)
+        arm.send("STOP")          # arrives while the task holds the lock
+        return arm.abort.is_set()
+    with patch.object(arm, "_pause", side_effect=pause):
+        result = arm.run_task("pick_up", 8)
+    assert result["aborted"] is True
+    assert [w.decode().strip() for w in arm.connection.written][-1] == "STOP"
+    assert not arm.task_active and not arm.lock.locked()

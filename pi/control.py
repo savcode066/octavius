@@ -6,6 +6,7 @@ import time
 import logging
 import serial
 from serial.tools import list_ports
+from grasp import setting, width_to_claw_angle
 
 logger = logging.getLogger("octavius.control")
 
@@ -36,12 +37,25 @@ def normalize_command(value):
 class NanoRejected(RuntimeError):
     """The Nano answered ERR; the serial link is fine, so keep it open."""
 
+TASKS = {"pick_up", "put_down"}
+# The Nano jumps straight to a written angle and reports no motion, so tasks
+# walk the servo there in small timed steps. The pitch limits mirror stepPitch()
+# in the sketch, which clamps to 60..120.
+RAMP_STEP_DEG = 2
+RAMP_STEP_SECONDS = 0.025
+SETTLE_SECONDS = 0.3
+PITCH_LIMITS = (60, 120)
+STATUS_REPLY = re.compile(r"OK STATUS yaw=(\d+) pitch=(\d+) claw=(\d+)")
+
 class Arm:
     def __init__(self):
         self.connection = None
         self.lock = threading.Lock()
         self.simulate = os.getenv("OCTAVIUS_SIMULATE", "0") == "1"
         self.port = os.getenv("OCTAVIUS_SERIAL_PORT", "auto")
+        self.abort = threading.Event()
+        self.task_active = False
+        self.sim_angles = {"yaw": 90, "pitch": 90, "claw": 90}
 
     def status(self):
         return {"connected": bool(self.connection and self.connection.is_open),
@@ -50,12 +64,26 @@ class Arm:
     def send(self, command):
         command = normalize_command(command)
         logger.info("command requested command=%s simulated=%s", command, self.simulate)
+        # STOP must get through a running task, which holds the lock.
+        if command == "STOP" and self.task_active:
+            self.abort.set()
+            return "OK STOP (task aborting)"
         # Never accumulate clicks into a queue of unexpected future movement.
         if not self.lock.acquire(blocking=False):
             logger.warning("command rejected command=%s reason=busy", command)
             raise RuntimeError("Nano is busy; try again in a moment.")
         try:
+            return self._exchange(command)
+        finally:
+            self.lock.release()
+
+    def _exchange(self, command):
+        """One command and its reply. The caller must hold self.lock."""
+        try:
             if self.simulate:
+                verb, *args = command.split()
+                if verb in ("PITCH_ANGLE", "CLAW_ANGLE"):
+                    self.sim_angles[verb.split("_")[0].lower()] = int(args[0])
                 return f"SIMULATED {command}"
             if not self.connection or not self.connection.is_open:
                 port = self.port
@@ -95,5 +123,72 @@ class Arm:
                 self.connection = None
                 logger.info("serial connection cleared")
             raise
+
+    def _read_angles(self):
+        if self.simulate:
+            return dict(self.sim_angles)
+        reply = self._exchange("STATUS")
+        match = STATUS_REPLY.fullmatch(reply)
+        if not match:
+            raise RuntimeError("Could not read the arm position: " + reply)
+        return dict(zip(("yaw", "pitch", "claw"), map(int, match.groups())))
+
+    def _pause(self, seconds):
+        """Sleep, waking early if STOP arrives. True means the task was aborted."""
+        if self.simulate:
+            return self.abort.is_set()
+        return self.abort.wait(seconds)
+
+    def _ramp(self, verb, start, target):
+        """Walk one joint to target in small steps. False means the task was aborted."""
+        position = start
+        while position != target:
+            if self.abort.is_set():
+                return False
+            position += max(-RAMP_STEP_DEG, min(RAMP_STEP_DEG, target - position))
+            self._exchange(f"{verb} {position}")
+            if self._pause(RAMP_STEP_SECONDS):
+                return False
+        return not self._pause(SETTLE_SECONDS)
+
+    def run_task(self, name, width_cm=None):
+        """pick_up: close the claw on the object, then raise the arm.
+        put_down: lower the arm, then open the claw."""
+        if name not in TASKS:
+            raise ValueError("Unknown task.")
+        cfg = {key: int(setting(key)) for key in
+               ("OCTAVIUS_PICKUP_PITCH", "OCTAVIUS_PUTDOWN_PITCH", "OCTAVIUS_CLAW_OPEN_ANGLE")}
+        for key in ("OCTAVIUS_PICKUP_PITCH", "OCTAVIUS_PUTDOWN_PITCH"):
+            if not PITCH_LIMITS[0] <= cfg[key] <= PITCH_LIMITS[1]:
+                raise ValueError(f"{key} in .env must be between {PITCH_LIMITS[0]} and {PITCH_LIMITS[1]}.")
+        claw_angle = width_to_claw_angle(width_cm) if name == "pick_up" else cfg["OCTAVIUS_CLAW_OPEN_ANGLE"]
+        if not 0 <= claw_angle <= 180:
+            raise ValueError("OCTAVIUS_CLAW_OPEN_ANGLE in .env must be between 0 and 180.")
+        pitch_target = cfg["OCTAVIUS_PICKUP_PITCH"] if name == "pick_up" else cfg["OCTAVIUS_PUTDOWN_PITCH"]
+        # Claw first when picking up, pitch first when putting down.
+        moves = [("CLAW_ANGLE", "claw", claw_angle), ("PITCH_ANGLE", "pitch", pitch_target)]
+        if name == "put_down":
+            moves.reverse()
+
+        logger.info("task requested task=%s width_cm=%s simulated=%s", name, width_cm, self.simulate)
+        if not self.lock.acquire(blocking=False):
+            logger.warning("task rejected task=%s reason=busy", name)
+            raise RuntimeError("Nano is busy; try again in a moment.")
+        self.abort.clear()
+        self.task_active = True
+        steps, aborted = [], False
+        try:
+            angles = self._read_angles()
+            for verb, joint, target in moves:
+                steps.append(f"{verb} {target}")
+                if not self._ramp(verb, angles[joint], target):
+                    aborted = True
+                    break
+            if aborted:
+                self._exchange("STOP")
+            logger.info("task complete task=%s steps=%s aborted=%s", name, steps, aborted)
+            return {"task": name, "claw_angle": claw_angle, "pitch": pitch_target,
+                    "steps": steps, "aborted": aborted}
         finally:
+            self.task_active = False
             self.lock.release()

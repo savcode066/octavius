@@ -114,6 +114,28 @@ def command():
         return jsonify(error="Nano unavailable or busy. Check USB, main sketch, and serial port. " +
                        (str(exc) if isinstance(exc, RuntimeError) else "")), 503
 
+def run_task(name, width_cm=None):
+    try:
+        result = arm.run_task(name, width_cm)
+        return jsonify(result)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    except Exception as exc:
+        logger.warning("task failed task=%s remote=%s error_type=%s detail=%s",
+                       name, request.remote_addr, type(exc).__name__, str(exc))
+        return jsonify(error="Nano unavailable or busy. Check USB, main sketch, and serial port. " +
+                       (str(exc) if isinstance(exc, RuntimeError) else "")), 503
+
+@app.post("/pickup")
+def pickup():
+    payload = request.get_json(silent=True)
+    width = payload.get("width_cm") if isinstance(payload, dict) else None
+    return run_task("pick_up", width)
+
+@app.post("/putdown")
+def putdown():
+    return run_task("put_down")
+
 @app.post("/interpret")
 def interpret():
     text = request.form.get("text", "").strip()
