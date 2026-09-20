@@ -1,0 +1,131 @@
+import io
+import json
+import sys
+import wave
+from pathlib import Path
+from unittest.mock import patch
+import pytest
+
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"pi"))
+import app as server
+from control import normalize_command
+from omni import Omni
+from setup_local import setup
+from summarize_usage import summarize
+
+@pytest.fixture
+def client(monkeypatch):
+    server.app.config.update(TESTING=True, SESSION_COOKIE_SECURE=False)
+    monkeypatch.setattr(server,"pair_code","123456")
+    monkeypatch.setattr(server.arm,"simulate",True)
+    server.attempts.clear()
+    with server.app.test_client() as c:
+        yield c
+
+HEADERS={"X-Octavius":"1"}
+def test_page_assets(client):
+    assert client.get("/").status_code == 200
+    assert client.get("/static/app.js").status_code == 200
+    assert client.get("/static/style.css").status_code == 200
+
+def pair(client):
+    return client.post("/pair",json={"code":"123456"},headers=HEADERS)
+
+def test_auth_and_command(client):
+    assert client.post("/command",json={"command":"WAVE"},headers=HEADERS).status_code==401
+    assert pair(client).status_code==200
+    assert client.post("/command",json={"command":"WAVE"}).status_code==403
+    assert client.post("/command",json={"command":"WAVE"},headers={**HEADERS,"Origin":"https://evil.test"}).status_code==403
+    response=client.post("/command",json={"command":"left"},headers=HEADERS)
+    assert response.json["nano_response"]=="SIMULATED YAW_LEFT"
+    assert client.get("/command?cmd=WAVE").status_code==405
+
+@pytest.mark.parametrize("cmd",["",None,"WAVE\nCLAW_CLOSE","PITCH_ANGLE 180","CLAW_ANGLE nope","YAW_LEFT 999","PITCH_ANGLE -1"])
+def test_bad_commands(cmd):
+    with pytest.raises(ValueError): normalize_command(cmd)
+
+def test_pair_limit(client):
+    for _ in range(5): client.post("/pair",json={"code":"bad"},headers=HEADERS)
+    assert pair(client).status_code==429
+
+def test_disabled_means_no_network(client,monkeypatch):
+    pair(client)
+    monkeypatch.setattr(server.omni,"enabled",False)
+    with patch("omni.httpx.Client",side_effect=AssertionError("network forbidden")):
+        assert client.post("/interpret",data={"text":"wave","live":"false"},headers=HEADERS).json["mode"]=="practice"
+        assert client.post("/interpret",data={"text":"wave","live":"true"},headers=HEADERS).status_code==400
+
+def wav_bytes():
+    buf=io.BytesIO()
+    with wave.open(buf,"wb") as w:
+        w.setnchannels(1);w.setsampwidth(2);w.setframerate(16000);w.writeframes(b"\0"*3200)
+    return buf.getvalue()
+
+def test_multimodal_and_usage(tmp_path):
+    model=Omni();model.enabled=True;model.key="test-secret-only";model.ledger=tmp_path/"calls.jsonl"
+    payload={"choices":[{"message":{"content":json.dumps({"reply":"Ready","command":"WAVE","heard":"wave"})}}],
+             "usage":{"prompt_tokens":10,"completion_tokens":5}}
+    with patch("omni.httpx.Client") as client:
+        response=client.return_value.__enter__.return_value.post.return_value
+        response.status_code=200;response.json.return_value=payload
+        result=model.interpret("wave",b"\xff\xd8frame",wav_bytes(),True)
+        request=client.return_value.__enter__.return_value.post.call_args.kwargs["json"]
+        assert [p["type"] for p in request["messages"][1]["content"]]==["text","image_url","input_audio"]
+        assert result["command"]=="WAVE"
+    ledger=model.ledger.read_text()
+    assert "test-secret-only" not in ledger
+    assert json.loads(ledger)["total_tokens"]==15
+    summarize(model.ledger,tmp_path/"summary")
+    assert json.loads((tmp_path/"summary/usage_summary.json").read_text())["calls"]==1
+
+def test_no_automatic_motion(client,monkeypatch):
+    pair(client)
+    monkeypatch.setattr(server.omni,"interpret",lambda *a,**k:dict(reply="Wave?",command="WAVE"))
+    monkeypatch.setattr(server.arm,"send",lambda *a:pytest.fail("model triggered movement"))
+    assert client.post("/interpret",data={"text":"wave"},headers=HEADERS).json["command"]=="WAVE"
+
+def test_reject_model_action(tmp_path):
+    model=Omni();model.enabled=True;model.key="test";model.ledger=tmp_path/"ledger"
+    with patch("omni.httpx.Client") as client:
+        response=client.return_value.__enter__.return_value.post.return_value
+        response.status_code=200
+        response.json.return_value={"choices":[{"message":{"content":'{"command":"EXEC rm"}'}}]}
+        with pytest.raises(ValueError):model.interpret("wave",live=True)
+    assert json.loads(model.ledger.read_text())["total_tokens"] is None
+
+def test_certificate_setup_is_repeatable(tmp_path):
+    from cryptography import x509
+    setup(tmp_path)
+    ca=(tmp_path/"certs/ca.crt").read_bytes()
+    env=(tmp_path/".env").read_text()
+    setup(tmp_path)
+    assert (tmp_path/"certs/ca.crt").read_bytes()==ca
+    assert "OCTAVIUS_OMNI_ENABLED=0" in env
+    leaf=x509.load_pem_x509_certificate((tmp_path/"certs/server.crt").read_bytes())
+    root=x509.load_pem_x509_certificate(ca)
+    leaf.verify_directly_issued_by(root)
+
+def test_error_is_not_success(client,monkeypatch):
+    pair(client)
+    def fail(cmd): raise RuntimeError("Nano did not acknowledge.")
+    monkeypatch.setattr(server.arm,"send",fail)
+    assert client.post("/command",json={"command":"STOP"},headers=HEADERS).status_code==503
+
+def test_provider_failure_logged_without_retry(tmp_path):
+    import httpx
+    model=Omni();model.enabled=True;model.key="private-test";model.ledger=tmp_path/"calls"
+    with patch("omni.httpx.Client") as client:
+        post=client.return_value.__enter__.return_value.post
+        post.side_effect=httpx.ConnectError("offline")
+        with pytest.raises(RuntimeError): model.interpret("wave",live=True)
+        assert post.call_count==1
+    record=json.loads(model.ledger.read_text())
+    assert record["ok"] is False
+    assert record["total_tokens"] is None
+    assert "private-test" not in model.ledger.read_text()
+
+def test_bad_media_does_not_spend(tmp_path):
+    model=Omni();model.enabled=True;model.key="test";model.ledger=tmp_path/"calls"
+    with patch("omni.httpx.Client",side_effect=AssertionError("network forbidden")):
+        with pytest.raises(ValueError):model.interpret("wave",audio=b"not wav",live=True)
+    assert not model.ledger.exists()

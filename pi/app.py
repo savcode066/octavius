@@ -1,179 +1,120 @@
-#!/usr/bin/env python3
-"""Octavius local control server.
-
-Serves the controller page and relays validated commands to the Arduino Nano.
-The Nano remains responsible for motion limits and gentle servo movement.
-"""
-
+"""Octavius phone interface. Run via the supplied service or locally for testing."""
 import os
+import secrets
 import time
+from collections import defaultdict
 from pathlib import Path
 from threading import Lock
+from dotenv import load_dotenv
+from flask import Flask, jsonify, request, session, send_from_directory
 
-import serial
-from flask import Flask, jsonify, request, send_from_directory
+ROOT = Path(__file__).resolve().parent
+load_dotenv(ROOT / ".env")
+from control import Arm, normalize_command
+from omni import Omni
 
-SERIAL_PORT = os.environ.get("OCTAVIUS_SERIAL_PORT", "/dev/ttyACM0")
-SERIAL_BAUD = int(os.environ.get("OCTAVIUS_SERIAL_BAUD", "115200"))
-UPLOAD_DIRECTORY = Path(__file__).parent / "uploads"
-AUDIO_DIRECTORY = Path(__file__).parent / "audio_uploads"
-TLS_CERT_FILE = os.environ.get("OCTAVIUS_TLS_CERT", "")
-TLS_KEY_FILE = os.environ.get("OCTAVIUS_TLS_KEY", "")
+app = Flask(__name__, static_folder="web", static_url_path="/static")
+app.config.update(SECRET_KEY=os.getenv("OCTAVIUS_SESSION_SECRET") or secrets.token_hex(32),
+                  MAX_CONTENT_LENGTH=2 * 1024 * 1024,
+                  SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Strict",
+                  SESSION_COOKIE_SECURE=os.getenv("OCTAVIUS_DEV_HTTP", "0") != "1")
+arm, omni = Arm(), Omni()
+pair_code = os.getenv("OCTAVIUS_PAIR_CODE", "")
+attempts = defaultdict(list)
+pair_lock = Lock()
 
-FIXED_COMMANDS = {
-    "STOP",
-    "HOME",
-    "WAVE",
-    "CLAW_OPEN",
-    "CLAW_CLOSE",
-    "PITCH_UP",
-    "PITCH_DOWN",
-}
+@app.before_request
+def guard():
+    if request.method == "POST":
+        if request.headers.get("X-Octavius") != "1":
+            return jsonify(error="Use the Octavius control page."), 403
+        origin = request.headers.get("Origin")
+        if origin and origin != request.host_url.rstrip("/"):
+            return jsonify(error="Untrusted origin."), 403
+        if request.path != "/pair" and not session.get("paired"):
+            return jsonify(error="Enter the pairing code first."), 401
 
-COMMAND_ALIASES = {
-    "ELBOW_LEFT": "YAW_LEFT",
-    "ELBOW_RIGHT": "YAW_RIGHT",
-    "ELBOW_UP": "PITCH_UP",
-    "ELBOW_DOWN": "PITCH_DOWN",
-    "PITCH": "PITCH_ANGLE",
-    "CLAW": "CLAW_ANGLE",
-}
+@app.after_request
+def headers(response):
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'"
+    return response
 
-app = Flask(__name__, static_folder="web")
-serial_connection = None
-serial_lock = Lock()
-
-
-def normalize_command(raw_command: str) -> str:
-    """Normalize a typed command and enforce safe ranges before serializing it."""
-    compact = " ".join(raw_command.strip().upper().split())
-    if not compact:
-        raise ValueError("Enter a command.")
-
-    parts = compact.split(" ")
-    verb = COMMAND_ALIASES.get(parts[0], parts[0])
-
-    if verb in FIXED_COMMANDS:
-        if len(parts) != 1:
-            raise ValueError(f"{verb} does not take a value.")
-        return verb
-
-    if verb in {"YAW_LEFT", "YAW_RIGHT"}:
-        if len(parts) > 2:
-            raise ValueError(f"{verb} accepts an optional duration in milliseconds.")
-        duration = 180 if len(parts) == 1 else int(parts[1])
-        duration = max(50, min(750, duration))
-        return f"{verb} {duration}"
-
-    if verb in {"PITCH_ANGLE", "CLAW_ANGLE"}:
-        if len(parts) != 2:
-            raise ValueError(f"{verb} needs one angle value.")
-        angle = int(parts[1])
-        if verb == "PITCH_ANGLE":
-            angle = max(70, min(110, angle))
-        else:
-            angle = max(35, min(80, angle))
-        return f"{verb} {angle}"
-
-    raise ValueError("Unknown command. Try HOME, YAW_LEFT, PITCH_UP, or CLAW_OPEN.")
-
-
-def nano_connection():
-    """Open the Nano lazily so the server can start before USB is attached."""
-    global serial_connection
-    if serial_connection and serial_connection.is_open:
-        return serial_connection
-
-    serial_connection = serial.Serial(SERIAL_PORT, SERIAL_BAUD, timeout=2)
-    time.sleep(2)  # The Nano commonly resets when serial opens.
-    serial_connection.reset_input_buffer()
-    return serial_connection
-
-
-def send_command(command: str) -> str:
-    # Prevent two browser taps from interleaving bytes on the serial link.
-    with serial_lock:
-        connection = nano_connection()
-        connection.write(f"{command}\n".encode("utf-8"))
-        connection.flush()
-        return connection.readline().decode("utf-8", errors="replace").strip()
-
+@app.errorhandler(413)
+def too_big(error):
+    return jsonify(error="Recording is too large. Limit recordings to 10 seconds."), 413
 
 @app.get("/")
-def controller():
+def index():
     return send_from_directory(app.static_folder, "index.html")
-
 
 @app.get("/health")
 def health():
-    return jsonify(status="ok", serial_port=SERIAL_PORT)
+    return jsonify(status="ok", paired=bool(session.get("paired")),
+                   pairing_configured=bool(pair_code), arm=arm.status(), omni=omni.status())
 
+@app.post("/pair")
+def pair():
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify(error="Expected JSON."), 400
+    with pair_lock:
+        now = time.monotonic()
+        peer = request.remote_addr
+        # Remove expired peers rather than retaining an unbounded map.
+        for key in list(attempts):
+            attempts[key] = [t for t in attempts[key] if now - t < 60]
+            if not attempts[key]:
+                del attempts[key]
+        if len(attempts[peer]) >= 5:
+            return jsonify(error="Wait one minute before trying again."), 429
+        attempts[peer].append(now)
+        code = payload.get("code")
+        if not pair_code or not isinstance(code, str) or not secrets.compare_digest(code, pair_code):
+            return jsonify(error="Incorrect pairing code. Find it in the Pi installer output."), 403
+        session["paired"] = True
+    return jsonify(ok=True)
 
-@app.route("/command", methods=["GET", "POST"])
+@app.post("/command")
 def command():
-    payload = request.get_json(silent=True) or {}
-    requested_command = (
-        payload.get("command")
-        or request.form.get("command")
-        or request.args.get("cmd")
-        or ""
-    )
-
+    payload = request.get_json(silent=True)
     try:
-        safe_command = normalize_command(str(requested_command))
-    except (TypeError, ValueError) as error:
-        return jsonify(error=str(error)), 400
+        if not isinstance(payload, dict):
+            raise ValueError("Expected a JSON command.")
+        cmd = normalize_command(payload.get("command"))
+        reply = arm.send(cmd)
+        return jsonify(command=cmd, nano_response=reply)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    except Exception as exc:
+        app.logger.warning("Nano communication failed: %s", type(exc).__name__)
+        return jsonify(error="Nano unavailable or busy. Check USB, main sketch, and serial port. " +
+                       (str(exc) if isinstance(exc, RuntimeError) else "")), 503
 
+@app.post("/interpret")
+def interpret():
+    text = request.form.get("text", "").strip()
+    if len(text) > 1000:
+        return jsonify(error="Keep requests under 1,000 characters."), 400
+    photo = request.files.get("photo")
+    audio = request.files.get("audio")
     try:
-        nano_response = send_command(safe_command)
-        return jsonify(command=safe_command, nano_response=nano_response)
-    except (serial.SerialException, OSError) as error:
-        return jsonify(error=f"Could not reach Nano on {SERIAL_PORT}: {error}"), 503
-
-
-@app.post("/photo")
-def photo():
-    """Accept an iPhone Shortcut photo for future vision processing."""
-    uploaded_photo = request.files.get("photo")
-    if uploaded_photo is None or uploaded_photo.filename == "":
-        return jsonify(error="Send an image using the form field named 'photo'."), 400
-
-    UPLOAD_DIRECTORY.mkdir(parents=True, exist_ok=True)
-    destination = UPLOAD_DIRECTORY / "latest.jpg"
-    uploaded_photo.save(destination)
-    return jsonify(status="photo saved", path=str(destination.name))
-
-
-@app.post("/audio")
-def audio():
-    """Accept the latest microphone recording from the phone."""
-    uploaded_audio = request.files.get("audio")
-    if uploaded_audio is None:
-        return jsonify(error="Send an audio recording using the form field named 'audio'."), 400
-
-    AUDIO_DIRECTORY.mkdir(parents=True, exist_ok=True)
-    mime_type = uploaded_audio.mimetype or "application/octet-stream"
-    if "mp4" in mime_type or "m4a" in mime_type:
-        extension = ".m4a"
-    elif "ogg" in mime_type:
-        extension = ".ogg"
-    else:
-        extension = ".webm"
-
-    destination = AUDIO_DIRECTORY / f"latest{extension}"
-    uploaded_audio.save(destination)
-    return jsonify(
-        status="audio saved",
-        path=str(destination.name),
-        mime_type=mime_type,
-    )
-
+        result = omni.interpret(text, photo.read() if photo else None,
+                                audio.read() if audio else None,
+                                live=request.form.get("live") == "true")
+        # Interpretation never moves hardware. The user confirms via /command.
+        return jsonify(result)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    except RuntimeError as exc:
+        return jsonify(error=str(exc)), 502
+    except Exception:
+        app.logger.error("OMNI request failed; see private usage ledger.")
+        return jsonify(error="Could not process request. No movement sent."), 500
 
 if __name__ == "__main__":
-    if bool(TLS_CERT_FILE) != bool(TLS_KEY_FILE):
-        raise SystemExit("Set both OCTAVIUS_TLS_CERT and OCTAVIUS_TLS_KEY, or neither.")
-
-    ssl_context = (TLS_CERT_FILE, TLS_KEY_FILE) if TLS_CERT_FILE else None
-    scheme = "https" if ssl_context else "http"
-    print(f"Octavius server: {scheme}://0.0.0.0:5000")
-    app.run(host="0.0.0.0", port=5000, debug=False, ssl_context=ssl_context)
+    cert, key = ROOT / "certs/server.crt", ROOT / "certs/server.key"
+    tls = (str(cert), str(key)) if cert.exists() and key.exists() else None
+    app.run(host="0.0.0.0", port=5000, ssl_context=tls, threaded=True, debug=False)

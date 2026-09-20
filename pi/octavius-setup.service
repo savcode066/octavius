@@ -1,0 +1,15 @@
+[Unit]
+Description=Octavius phone certificate setup
+After=network.target
+
+[Service]
+User=octavius
+WorkingDirectory=/home/octavius/pi
+ExecStart=/home/octavius/pi/.venv/bin/gunicorn --workers 1 --threads 2 --bind 0.0.0.0:8080 onboarding:app
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,53 +1,28 @@
-#!/usr/bin/env python3
-"""Small terminal controller for Octavius.
-
-Run this on the Pi while app.py is running, then type the same commands used
-by the web page.
-"""
-
-import json
+"""Authenticated terminal controller using the same HTTPS server as the phone."""
 import os
-import urllib.error
-import urllib.request
+from pathlib import Path
+import httpx
+from dotenv import load_dotenv
+ROOT=Path(__file__).resolve().parent
+load_dotenv(ROOT/".env")
 
+def main():
+    import ssl
+    context=ssl.create_default_context(cafile=str(ROOT/"certs/ca.crt"))
+    with httpx.Client(base_url=os.getenv("OCTAVIUS_SERVER_URL","https://127.0.0.1:5000"),
+                      verify=context,timeout=8,trust_env=False,headers={"X-Octavius":"1"}) as client:
+        response=client.post("/pair",json={"code":os.getenv("OCTAVIUS_PAIR_CODE","")})
+        response.raise_for_status()
+        print("Octavius connected. HELP for commands, QUIT to exit.")
+        while True:
+            try: command=input("octavius> ").strip().upper()
+            except (EOFError,KeyboardInterrupt): break
+            if command in {"QUIT","EXIT"}: break
+            if command=="HELP":
+                print("YAW_LEFT YAW_RIGHT PITCH_UP PITCH_DOWN CLAW_OPEN CLAW_CLOSE WAVE HOME STOP")
+                print("PITCH_ANGLE 95 | CLAW_ANGLE 55");continue
+            if command:
+                try: print(client.post("/command",json={"command":command}).json())
+                except httpx.RequestError: print("Could not reach the control server.")
 
-SERVER_URL = os.environ.get("OCTAVIUS_SERVER_URL", "http://127.0.0.1:5000")
-
-
-def send(command: str) -> None:
-    request = urllib.request.Request(
-        f"{SERVER_URL}/command",
-        data=json.dumps({"command": command}).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-
-    try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            print(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as error:
-        print(error.read().decode("utf-8"))
-    except urllib.error.URLError as error:
-        print(f"Could not reach Octavius server: {error.reason}")
-
-
-print("Octavius terminal control")
-print("Type HELP for examples or QUIT to exit.")
-
-while True:
-    try:
-        command = input("octavius> ").strip()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        break
-
-    if not command:
-        continue
-    if command.upper() in {"QUIT", "EXIT"}:
-        break
-    if command.upper() == "HELP":
-        print("YAW_LEFT, YAW_RIGHT, PITCH_UP, PITCH_DOWN, CLAW_OPEN, CLAW_CLOSE")
-        print("YAW_LEFT 250, PITCH_ANGLE 95, CLAW_ANGLE 55, WAVE, HOME, STOP")
-        continue
-
-    send(command)
+if __name__=="__main__": main()

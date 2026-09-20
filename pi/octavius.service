@@ -7,9 +7,11 @@ Wants=network-online.target
 Type=simple
 User=octavius
 WorkingDirectory=/home/octavius/pi
-Environment=OCTAVIUS_TLS_CERT=/home/octavius/pi/certs/octavius.crt
-Environment=OCTAVIUS_TLS_KEY=/home/octavius/pi/certs/octavius.key
-ExecStart=/home/octavius/pi/.venv/bin/python /home/octavius/pi/app.py
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/octavius/pi/.venv/bin/gunicorn --workers 1 --threads 8 --timeout 60 --bind 0.0.0.0:5000 --certfile /home/octavius/pi/certs/server.crt --keyfile /home/octavius/pi/certs/server.key app:app
+UMask=0077
+NoNewPrivileges=true
+SupplementaryGroups=dialout
 Restart=on-failure
 RestartSec=3
 

@@ -1,50 +1,36 @@
-# Arduino Nano arm controller
+# Main Nano sketch
 
-This sketch controls one arm with three servos.
+| Signal | Joint | Default hardware |
+| --- | --- | --- |
+| D2 | Left/right yaw | Continuous rotation |
+| D3 | Up/down pitch | Positional |
+| D4 | Tong | Positional |
 
-| Arduino Nano pin | Servo |
-| --- | --- |
-| D2 | Horizontal elbow, continuous-rotation yaw servo |
-| D3 | Vertical elbow, positional pitch servo |
-| D4 | Claw, positional servo |
+D2 was reported to spin continuously. `write(90)` is approximately stop on
+that servo; it does NOT mean 90 degrees. Calibrate YAW_STOP with the linkage
+detached. Yaw pulses automatically stop after 110 ms.
+If D2 was replaced with a positional servo, set `YAW_CONTINUOUS = false`.
 
-## Wiring
+Upload this sketch instead of a test sketch for Pi control. The baud rate is
+115200 with newline-terminated commands. Select the exact physical Nano model.
+Serial Monitor must be closed when the Pi controls the Nano.
 
-Each servo has three wires:
+Servo power comes from a suitable external regulated supply. Connect servo
+grounds and Nano GND together. Signal wires go to D2/D3/D4; the Pi connects
+to Nano USB. Verify the powered CrunchLabs board's pinout and power routing
+before combining its power with Nano USB.
 
-- Brown/black: external servo-power ground.
-- Red: external regulated 5V power.
-- Yellow/orange/white: signal wire to the Nano pin in the table above.
+Pitch moves in three-degree steps inside 70–110 degrees. Claw moves slowly
+between 45 and 65 degrees. Calibrate these values with the linkage disconnected;
+slow movement does not limit force. Startup positions are commanded immediately.
 
-Connect the external servo supply's ground to Nano `GND`. Do **not** connect the servo red wires to Nano `5V`.
+Commands: YAW_LEFT, YAW_RIGHT, PITCH_UP, PITCH_DOWN, CLAW_OPEN, CLAW_CLOSE,
+WAVE, HOME, STOP, PITCH_ANGLE 70..110, CLAW_ANGLE 35..80.
+Commands acknowledge when accepted, not when motion completes.
+Busy commands are rejected instead of queued. STOP is read during movement,
+cancels the wave, and holds positional joints. It does not cut servo power.
+Keep a physical servo power switch accessible.
 
-Connect the Pi to the Nano with a USB data cable. The Pi sends newline-terminated commands at 115200 baud.
-
-The D2 yaw servo is not position-aware. Each left/right command runs it for a
-short, limited time and then stops it. Its direction and timing are configured
-near the top of `octavius_arm.ino`. D3 and D4 are moved one degree at a time
-to keep the pitch and claw motion gentle.
-
-## Upload
-
-1. In Arduino IDE, install the standard `Servo` library if it is not already available.
-2. Select the correct Arduino Nano board and USB port.
-3. Upload `octavius_arm.ino`.
-4. Power the servo supply only after the code uploads and the arm has room to move.
-
-## Commands
-
-The normal commands are:
-
-- `YAW_LEFT` and `YAW_RIGHT`
-- `PITCH_UP` and `PITCH_DOWN`
-- `CLAW_OPEN` and `CLAW_CLOSE`
-- `WAVE`, `HOME`, and `STOP`
-- `YAW_LEFT 250` or `YAW_RIGHT 250` for a custom yaw duration in milliseconds
-- `PITCH_ANGLE 95` for a safe pitch angle
-- `CLAW_ANGLE 55` for a safe claw angle
-
-The old `ELBOW_LEFT`, `ELBOW_RIGHT`, `ELBOW_UP`, and `ELBOW_DOWN` names are
-also accepted as aliases.
-
-Tune the angle limits near the top of the sketch before attaching the cardboard shell.
+WAVE lifts slightly, makes balanced short yaw movements, and restores the
+pitch target. Continuous yaw has no position feedback; home and timed return
+cannot recover its exact original orientation.
