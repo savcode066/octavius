@@ -18,8 +18,8 @@ const int PITCH_STEP = 5;
 const int CLAW_LOW = 0;
 const int CLAW_HIGH = 180;
 
-const int CLAW_OPEN = 125;
-const int CLAW_CLOSED = 80;
+const int CLAW_MIN = 80;
+const int CLAW_MAX = 125;
 const int CLAW_STEP = 5;
 
 Servo yaw;
@@ -32,8 +32,8 @@ int yawTarget = 90;
 int pitchAngle = 90;
 int pitchTarget = 90;
 
-int clawAngle = CLAW_OPEN;
-int clawTarget = CLAW_OPEN;
+int clawAngle = (CLAW_MIN + CLAW_MAX) / 2;
+int clawTarget = clawAngle;
 
 unsigned long lastStep = 0;
 
@@ -137,7 +137,8 @@ void handle(char *line) {
     return;
   }
 
-  if (moving() || waveStage) {
+  // Only a running wave blocks input; plain moves accumulate onto the target.
+  if (waveStage) {
     Serial.println("ERR busy");
     return;
   }
@@ -200,21 +201,21 @@ void handle(char *line) {
     yawMove(false);
 
   } else if (!strcmp(verb, "PITCH_UP")) {
-    pitchTarget = max(PITCH_LOW, pitchAngle - PITCH_STEP);
+    pitchTarget = max(PITCH_LOW, pitchTarget - PITCH_STEP);
 
   } else if (!strcmp(verb, "PITCH_DOWN")) {
-    pitchTarget = min(PITCH_HIGH, pitchAngle + PITCH_STEP);
+    pitchTarget = min(PITCH_HIGH, pitchTarget + PITCH_STEP);
 
-  } else if (!strcmp(verb, "CLAW_OPEN")) {
-    clawTarget = min(CLAW_OPEN, clawAngle + CLAW_STEP);
+  } else if (!strcmp(verb, "CLAW_INC")) {
+    clawTarget = min(CLAW_MAX, clawTarget + CLAW_STEP);
 
-  } else if (!strcmp(verb, "CLAW_CLOSE")) {
-    clawTarget = max(CLAW_CLOSED, clawAngle - CLAW_STEP);
+  } else if (!strcmp(verb, "CLAW_DEC")) {
+    clawTarget = max(CLAW_MIN, clawTarget - CLAW_STEP);
 
   } else if (!strcmp(verb, "HOME")) {
     yawTarget = 90;
     pitchTarget = 90;
-    clawTarget = CLAW_OPEN;
+    clawTarget = (CLAW_MIN + CLAW_MAX) / 2;
 
   } else if (!strcmp(verb, "WAVE")) {
     savedYaw = yawAngle;

@@ -127,7 +127,7 @@ cd ~/pi
 ```
 
 Commands: `YAW_LEFT`, `YAW_RIGHT`, `PITCH_UP`, `PITCH_DOWN`,
-`CLAW_OPEN`, `CLAW_CLOSE`, `WAVE`, `HOME`, `STOP`,
+`CLAW_INC`, `CLAW_DEC`, `WAVE`, `HOME`, `STOP`,
 `PITCH_ANGLE 95`, `CLAW_ANGLE 100`.
 STOP cancels movement and holds positional servos; it does not cut servo power.
 

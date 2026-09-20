@@ -37,7 +37,7 @@ The code problems below are confirmed, but none has been established as the caus
 
 - Location: [pi/control.py](pi/control.py), the serial reply loop in `Arm.send()`.
 - The code accepts any line starting with `OK ` without matching the command that was sent. A delayed reply can therefore be attributed to the wrong request.
-- Reproduced by sending `YAW_LEFT` and returning `OK CLAW_CLOSE` from a fake Nano: the Pi accepted it.
+- Reproduced by sending `YAW_LEFT` and returning `OK CLAW_DEC` from a fake Nano: the Pi accepted it.
 - Needed fix: match the expected command acknowledgement. Request IDs would also distinguish repeated commands. Acceptance and completed motion should remain separate states.
 
 ### 5. Practice mode's media wording is misleading

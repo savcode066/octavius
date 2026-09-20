@@ -9,10 +9,10 @@ from serial.tools import list_ports
 
 logger = logging.getLogger("octavius.control")
 
-FIXED = {"STOP", "HOME", "WAVE", "CLAW_OPEN", "CLAW_CLOSE",
+FIXED = {"STOP", "HOME", "WAVE", "CLAW_INC", "CLAW_DEC",
          "PITCH_UP", "PITCH_DOWN", "YAW_LEFT", "YAW_RIGHT"}
 ALIASES = {"LEFT": "YAW_LEFT", "RIGHT": "YAW_RIGHT", "UP": "PITCH_UP",
-           "DOWN": "PITCH_DOWN", "OPEN": "CLAW_OPEN", "CLOSE": "CLAW_CLOSE",
+           "DOWN": "PITCH_DOWN",
            "ELBOW_LEFT": "YAW_LEFT", "ELBOW_RIGHT": "YAW_RIGHT",
            "ELBOW_UP": "PITCH_UP", "ELBOW_DOWN": "PITCH_DOWN"}
 
@@ -31,6 +31,9 @@ def normalize_command(value):
         if low <= int(parts[1]) <= high:
             return f"{verb} {int(parts[1])}"
     raise ValueError("Unknown command or value outside calibrated limits.")
+
+class NanoRejected(RuntimeError):
+    """The Nano answered ERR; the serial link is fine, so keep it open."""
 
 class Arm:
     def __init__(self):
@@ -73,18 +76,18 @@ class Arm:
             deadline = time.monotonic() + 3
             while time.monotonic() < deadline:
                 reply = self.connection.readline().decode("ascii", errors="replace").strip()
-                if reply.startswith("OK "):
+                if reply == "OK " + command.split()[0]:
                     logger.info("serial reply command=%s reply=%s", command, reply)
                     return reply
                 if reply.startswith("ERR"):
                     logger.warning("serial rejected command=%s reply=%s", command, reply)
-                    raise RuntimeError(reply)
+                    raise NanoRejected(reply)
             logger.error("serial timeout command=%s port=%s", command, self.port)
             raise RuntimeError("Nano did not acknowledge. Upload the main Octavius sketch, not a repeating test.")
         except (serial.SerialException, OSError, RuntimeError) as exc:
             logger.warning("serial command failed command=%s error_type=%s detail=%s",
                            command, type(exc).__name__, str(exc))
-            if self.connection:
+            if self.connection and not isinstance(exc, NanoRejected):
                 self.connection.close()
                 self.connection = None
                 logger.info("serial connection cleared")

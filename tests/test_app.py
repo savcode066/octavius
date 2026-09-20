@@ -40,7 +40,7 @@ def test_auth_and_command(client):
     assert response.json["nano_response"]=="SIMULATED YAW_LEFT"
     assert client.get("/command?cmd=WAVE").status_code==405
 
-@pytest.mark.parametrize("cmd",["",None,"WAVE\nCLAW_CLOSE","PITCH_ANGLE 180","CLAW_ANGLE nope","YAW_LEFT 999","PITCH_ANGLE -1"])
+@pytest.mark.parametrize("cmd",["",None,"WAVE\nCLAW_DEC","PITCH_ANGLE 180","CLAW_ANGLE nope","YAW_LEFT 999","PITCH_ANGLE -1"])
 def test_bad_commands(cmd):
     with pytest.raises(ValueError): normalize_command(cmd)
 
@@ -129,3 +129,27 @@ def test_bad_media_does_not_spend(tmp_path):
     with patch("omni.httpx.Client",side_effect=AssertionError("network forbidden")):
         with pytest.raises(ValueError):model.interpret("wave",audio=b"not wav",live=True)
     assert not model.ledger.exists()
+
+
+class FakeSerial:
+    is_open = True
+    def __init__(self, replies): self.replies = list(replies); self.written = []
+    def write(self, data): self.written.append(data)
+    def readline(self): return (self.replies.pop(0) + "\n").encode() if self.replies else b""
+    def close(self): self.is_open = False
+
+def _arm(replies):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "pi"))
+    from control import Arm
+    arm = Arm(); arm.connection = FakeSerial(replies)
+    return arm
+
+def test_nano_err_keeps_serial_open():
+    arm = _arm(["ERR busy"])
+    with pytest.raises(RuntimeError, match="busy"):
+        arm.send("YAW_LEFT")
+    assert arm.connection is not None and arm.connection.is_open
+
+def test_ok_must_match_command():
+    arm = _arm(["OK CLAW_DEC", "OK YAW_LEFT"])
+    assert arm.send("YAW_LEFT") == "OK YAW_LEFT"
