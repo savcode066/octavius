@@ -38,6 +38,9 @@ class NanoRejected(RuntimeError):
     """The Nano answered ERR; the serial link is fine, so keep it open."""
 
 TASKS = {"pick_up", "put_down"}
+TASK_COMMANDS = {"PICK_UP": "pick_up", "PUT_DOWN": "put_down"}
+# What OMNI may suggest. STATUS is excluded: it reports, it does not move.
+SUGGESTIBLE = (FIXED - {"STATUS"}) | set(TASK_COMMANDS)
 # The Nano jumps straight to a written angle and reports no motion, so tasks
 # walk the servo there in small timed steps. The pitch limits mirror stepPitch()
 # in the sketch, which clamps to 0..120.

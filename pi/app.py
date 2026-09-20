@@ -146,15 +146,13 @@ def interpret():
     try:
         photo_data = photo.read() if photo else None
         audio_data = audio.read() if audio else None
-        logger.info("interpret start remote=%s live=%s text_chars=%d photo_bytes=%d audio_bytes=%d",
-                    request.remote_addr, request.form.get("live") == "true", len(text),
+        logger.info("interpret start remote=%s text_chars=%d photo_bytes=%d audio_bytes=%d",
+                    request.remote_addr, len(text),
                     len(photo_data or b""), len(audio_data or b""))
-        result = omni.interpret(text, photo_data,
-                                audio_data,
-                                live=request.form.get("live") == "true")
+        result = omni.interpret(text, photo_data, audio_data)
         # Interpretation never moves hardware. The user confirms via /command.
-        logger.info("interpret complete mode=%s suggested_command=%s", result.get("mode"),
-                    result.get("command"))
+        logger.info("interpret complete suggested_command=%s heard=%r",
+                    result.get("command"), str(result.get("heard", ""))[:200])
         return jsonify(result)
     except ValueError as exc:
         logger.warning("interpret rejected error=%s", str(exc))

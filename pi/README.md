@@ -67,20 +67,22 @@ OCTAVIUS_SERIAL_PORT=/dev/ttyACM0
 Check available devices with `ls /dev/serial/by-id/`. A stable by-id path is
 preferable when several USB devices are attached.
 
-## 5. OMNI stays off until you enable it
+## 5. Voice needs an API key
 
 Edit `~/pi/.env` with `nano ~/pi/.env`:
 
 ```text
-OCTAVIUS_OMNI_ENABLED=0
 YIBU_API_KEY=your-private-key
 OCTAVIUS_OMNI_MODEL=qwen3.5-omni-flash
 ```
 
-Leave `0` for practice. When ready, change it to `1`, restart the service, and
-enable “Use OMNI for this session” on the phone. Reloading the page resets the
-phone's switch to off. Only Send request spends credits; opening the page,
-recording, and camera preview do not. The key stays on the Pi.
+Restart the service after editing. **Every Send request makes one paid call** —
+there is no practice mode and no off switch beyond removing the key. Opening the
+page, recording, and camera preview are still free. The key stays on the Pi.
+
+A suggested movement always waits for you to tap Run. `pick up` and `put down`
+run the same tasks as the buttons, using the object width set on the page; the
+model is never asked for a width.
 
 This integration supports the supplied HTTP models `qwen3.5-omni-flash`,
 `qwen3.5-omni-plus`, and `qwen3.8-omni-flash`. The realtime model IDs use a
@@ -93,7 +95,8 @@ When using a different IP, use `https://octavius.local:5000` if mDNS resolves;
 the included certificate covers that hostname, not arbitrary new IP addresses.
 
 Audio and camera frames are processed in memory and not saved by this app.
-Live requests send them to Yibu; practice makes no provider calls.
+Every request sends them to Yibu. Transcripts appear in the service log, so
+`journalctl -u octavius.service` shows exactly what the model heard.
 
 ## Controls and diagnostics
 
@@ -113,8 +116,10 @@ sudo journalctl -u octavius.service -f -o cat
 
 Useful messages include the detected serial devices, the selected Nano port,
 the command sent, the Nano reply, serial timeouts, and OMNI request status.
-Media bytes are counted for diagnosis, but audio, images, transcripts, and API
-keys are not written to the journal. Press Ctrl+C to stop following the logs.
+Each OMNI reply is logged with `heard=` — the transcript of what the model made
+out — alongside the suggested command and the recording length in seconds.
+Audio, images and API keys are never written to the journal; transcripts are.
+Press Ctrl+C to stop following the logs.
 
 The server staying online does not itself ensure the hotspot stays enabled:
 keep the NetworkManager Hotspot profile set to autoconnect.

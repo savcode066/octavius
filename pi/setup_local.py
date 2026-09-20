@@ -55,7 +55,7 @@ def setup(root=ROOT):
     (certs/"octavius-ca.cer").write_bytes(ca.public_bytes(serialization.Encoding.DER))
     env = root / ".env"
     existing = env.read_text() if env.exists() else ""
-    defaults = {"OCTAVIUS_OMNI_ENABLED":"0","YIBU_API_KEY":"",
+    defaults = {"YIBU_API_KEY":"",
                 "OCTAVIUS_OMNI_MODEL":"qwen3.5-omni-flash","OCTAVIUS_SERIAL_PORT":"auto",
                 "OCTAVIUS_PAIR_CODE":str(secrets.randbelow(900000)+100000),
                 "OCTAVIUS_SESSION_SECRET":secrets.token_hex(32),"OCTAVIUS_SIMULATE":"0"}

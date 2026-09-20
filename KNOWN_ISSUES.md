@@ -40,12 +40,12 @@ The code problems below are confirmed, but none has been established as the caus
 - Reproduced by sending `YAW_LEFT` and returning `OK CLAW_DEC` from a fake Nano: the Pi accepted it.
 - Fixed: `Arm.send()` now requires the reply to name the command it sent. Request IDs would also distinguish repeated commands. Acceptance and completed motion remain separate states.
 
-### 5. Practice mode's media wording is misleading
+### 5. Every request now spends credits
 
-- Locations: [pi/web/app.js](pi/web/app.js), the request form handler; [pi/omni.py](pi/omni.py), the practice response.
-- `Send request` attaches the camera frame and saved audio even when live mode is off. The files go from the phone to the Pi, where practice mode ignores them.
-- There is no provider call in practice mode, but the response says the camera and microphone stay local without explaining that they were uploaded to the Pi.
-- Needed fix: skip media uploads in practice mode, or explicitly describe the phone-to-Pi transfer. Recording and preview can still work without a paid request.
+- Locations: [pi/omni.py](pi/omni.py), `interpret()`; [pi/web/index.html](pi/web/index.html).
+- Practice mode, the `live` flag, the `OCTAVIUS_OMNI_ENABLED` gate and the three-second throttle were all removed at the team's request. A present `YIBU_API_KEY` is now the only thing deciding whether voice works.
+- The consequence is that there is no free way to exercise the voice path. Every attempt to debug it costs money, including the first one, which has still never succeeded.
+- The confirm tap before any movement is unchanged, and `/interpret` still never touches hardware.
 
 ## Hardware and calibration still need verification
 

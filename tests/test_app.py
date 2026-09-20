@@ -48,12 +48,11 @@ def test_pair_limit(client):
     for _ in range(5): client.post("/pair",json={"code":"bad"},headers=HEADERS)
     assert pair(client).status_code==429
 
-def test_disabled_means_no_network(client,monkeypatch):
+def test_missing_key_means_no_network(client,monkeypatch):
     pair(client)
-    monkeypatch.setattr(server.omni,"enabled",False)
+    monkeypatch.setattr(server.omni,"key","")
     with patch("omni.httpx.Client",side_effect=AssertionError("network forbidden")):
-        assert client.post("/interpret",data={"text":"home","live":"false"},headers=HEADERS).json["mode"]=="practice"
-        assert client.post("/interpret",data={"text":"home","live":"true"},headers=HEADERS).status_code==400
+        assert client.post("/interpret",data={"text":"home"},headers=HEADERS).status_code==400
 
 def wav_bytes():
     buf=io.BytesIO()
@@ -62,13 +61,13 @@ def wav_bytes():
     return buf.getvalue()
 
 def test_multimodal_and_usage(tmp_path):
-    model=Omni();model.enabled=True;model.key="test-secret-only";model.ledger=tmp_path/"calls.jsonl"
+    model=Omni();model.key="test-secret-only";model.ledger=tmp_path/"calls.jsonl"
     payload={"choices":[{"message":{"content":json.dumps({"reply":"Ready","command":"HOME","heard":"home"})}}],
              "usage":{"prompt_tokens":10,"completion_tokens":5}}
     with patch("omni.httpx.Client") as client:
         response=client.return_value.__enter__.return_value.post.return_value
         response.status_code=200;response.json.return_value=payload
-        result=model.interpret("home",b"\xff\xd8frame",wav_bytes(),True)
+        result=model.interpret("home",b"\xff\xd8frame",wav_bytes())
         request=client.return_value.__enter__.return_value.post.call_args.kwargs["json"]
         assert [p["type"] for p in request["messages"][1]["content"]]==["text","image_url","input_audio"]
         assert result["command"]=="HOME"
@@ -82,15 +81,16 @@ def test_no_automatic_motion(client,monkeypatch):
     pair(client)
     monkeypatch.setattr(server.omni,"interpret",lambda *a,**k:dict(reply="Home?",command="HOME"))
     monkeypatch.setattr(server.arm,"send",lambda *a:pytest.fail("model triggered movement"))
+    monkeypatch.setattr(server.arm,"run_task",lambda *a,**k:pytest.fail("model triggered a task"))
     assert client.post("/interpret",data={"text":"home"},headers=HEADERS).json["command"]=="HOME"
 
 def test_reject_model_action(tmp_path):
-    model=Omni();model.enabled=True;model.key="test";model.ledger=tmp_path/"ledger"
+    model=Omni();model.key="test";model.ledger=tmp_path/"ledger"
     with patch("omni.httpx.Client") as client:
         response=client.return_value.__enter__.return_value.post.return_value
         response.status_code=200
         response.json.return_value={"choices":[{"message":{"content":'{"command":"EXEC rm"}'}}]}
-        with pytest.raises(ValueError):model.interpret("home",live=True)
+        with pytest.raises(ValueError):model.interpret("home")
     assert json.loads(model.ledger.read_text())["total_tokens"] is None
 
 def test_certificate_setup_is_repeatable(tmp_path):
@@ -100,7 +100,6 @@ def test_certificate_setup_is_repeatable(tmp_path):
     env=(tmp_path/".env").read_text()
     setup(tmp_path)
     assert (tmp_path/"certs/ca.crt").read_bytes()==ca
-    assert "OCTAVIUS_OMNI_ENABLED=0" in env
     leaf=x509.load_pem_x509_certificate((tmp_path/"certs/server.crt").read_bytes())
     root=x509.load_pem_x509_certificate(ca)
     leaf.verify_directly_issued_by(root)
@@ -113,11 +112,11 @@ def test_error_is_not_success(client,monkeypatch):
 
 def test_provider_failure_logged_without_retry(tmp_path):
     import httpx
-    model=Omni();model.enabled=True;model.key="private-test";model.ledger=tmp_path/"calls"
+    model=Omni();model.key="private-test";model.ledger=tmp_path/"calls"
     with patch("omni.httpx.Client") as client:
         post=client.return_value.__enter__.return_value.post
         post.side_effect=httpx.ConnectError("offline")
-        with pytest.raises(RuntimeError): model.interpret("home",live=True)
+        with pytest.raises(RuntimeError): model.interpret("home")
         assert post.call_count==1
     record=json.loads(model.ledger.read_text())
     assert record["ok"] is False
@@ -125,9 +124,9 @@ def test_provider_failure_logged_without_retry(tmp_path):
     assert "private-test" not in model.ledger.read_text()
 
 def test_bad_media_does_not_spend(tmp_path):
-    model=Omni();model.enabled=True;model.key="test";model.ledger=tmp_path/"calls"
+    model=Omni();model.key="test";model.ledger=tmp_path/"calls"
     with patch("omni.httpx.Client",side_effect=AssertionError("network forbidden")):
-        with pytest.raises(ValueError):model.interpret("home",audio=b"not wav",live=True)
+        with pytest.raises(ValueError):model.interpret("home",audio=b"not wav")
     assert not model.ledger.exists()
 
 
@@ -215,3 +214,32 @@ def test_stop_aborts_a_running_task():
     assert result["aborted"] is True
     assert [w.decode().strip() for w in arm.connection.written][-1] == "STOP"
     assert not arm.task_active and not arm.lock.locked()
+
+def _suggestion(tmp_path, content):
+    """Run one fake provider response through Omni and return the result."""
+    model=Omni();model.key="test";model.ledger=tmp_path/"calls"
+    with patch("omni.httpx.Client") as client:
+        response=client.return_value.__enter__.return_value.post.return_value
+        response.status_code=200
+        response.json.return_value={"choices":[{"message":{"content":content}}]}
+        return model.interpret("do it")
+
+@pytest.mark.parametrize("action",["PICK_UP","PUT_DOWN"])
+def test_tasks_may_be_suggested(tmp_path,action):
+    result=_suggestion(tmp_path,json.dumps({"command":action,"reply":"ok","heard":"do it"}))
+    assert result["command"]==action
+
+def test_status_may_not_be_suggested(tmp_path):
+    """STATUS reports position; it is not a movement to offer behind a Run button."""
+    with pytest.raises(ValueError):
+        _suggestion(tmp_path,json.dumps({"command":"STATUS"}))
+
+def test_model_supplied_width_is_ignored(tmp_path):
+    """Grip width comes from the page, never the model: it cannot measure one."""
+    result=_suggestion(tmp_path,json.dumps({"command":"PICK_UP","width_cm":30,"reply":"ok"}))
+    assert "width_cm" not in result
+
+def test_transcript_reaches_the_log(tmp_path,caplog):
+    with caplog.at_level("INFO","octavius.omni"):
+        _suggestion(tmp_path,json.dumps({"command":None,"reply":"ok","heard":"move left"}))
+    assert "move left" in caplog.text

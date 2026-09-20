@@ -24,12 +24,11 @@
     <aside id="secure-help" hidden>Camera and microphone need trusted HTTPS. Open <a href="http://10.42.0.1:8080">phone setup</a> on the Octavius Wi-Fi to install and trust your Pi’s certificate.</aside>
   </section>
   <section class="panel">
-    <div class="section-head"><h2>Tell Octavius</h2><span id="mode" class="badge">Practice · no credits</span></div>
-    <label class="toggle"><input id="live" type="checkbox" disabled> Use OMNI for this session (uses credits)</label>
-    <p id="omni-note">API disabled by default. Practice mode does not interpret voice or images.</p>
+    <div class="section-head"><h2>Tell Octavius</h2><span id="mode" class="badge">Uses credits</span></div>
+    <p id="omni-note">Every Send request makes one paid OMNI call.</p>
     <form id="ask-form"><label for="prompt">Your request</label><textarea id="prompt" rows="2" maxlength="1000" placeholder="Look at the can. Help me line up the claw."></textarea>
-    <div class="row"><button type="button" id="record" class="secondary">Record voice</button><button id="ask">Send request</button></div></form>
-    <p id="record-state" role="status">Record up to 10 seconds. A camera frame is included when the camera is on.</p>
+    <div class="row"><button type="button" id="record" class="secondary">Record voice</button><button type="button" id="stop-record" class="secondary" disabled>Stop recording</button><button id="ask">Send request</button></div></form>
+    <p id="record-state" role="status">Record up to 10 seconds, tap Stop, then Send request. A camera frame is included when the camera is on.</p>
     <audio id="playback" controls hidden></audio>
     <div class="reply" aria-live="polite"><span class="eyebrow">OCTAVIUS</span><p id="reply">Ready when you are.</p><p id="heard"></p><button id="confirm" hidden>Run suggested movement</button></div>
   </section>
@@ -43,7 +42,7 @@
     <p id="status" role="status">Connect to begin.</p>
     <details><summary>Type a Nano command</summary><form id="command-form"><label for="command">Command</label><div class="row"><input id="command" placeholder="PITCH_ANGLE 95"><button>Send</button></div></form></details>
   </section>
-  <footer>Built by Dinesh, Roy &amp; Savio · Huawei OMNI integration via Yibu<br>Practice mode stays local. Live mode sends selected media to Yibu.</footer>
+  <footer>Built by Dinesh, Roy &amp; Savio · Huawei OMNI integration via Yibu<br>Every request sends your voice and any camera frame to Yibu.</footer>
 </main>
 </body>
 </html>

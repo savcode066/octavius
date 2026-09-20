@@ -1,7 +1,7 @@
 'use strict';
 const $ = (id) => document.getElementById(id);
 let camera = null, recorder = null, microphone = null, audioBlob = null;
-let recordTimer, playbackUrl, pending = null, paired = false, asking = false;
+let recordTimer, playbackUrl, pending = null, paired = false, asking = false, omniReady = false;
 let recordingEpoch = 0;
 
 async function api(path, options = {}) {
@@ -24,11 +24,11 @@ async function refresh() {
     paired = info.paired;
     $('connection').textContent = paired ? 'Connected' : 'Pair to control';
     $('pair-panel').hidden = paired;
-    $('live').disabled = !info.omni.available || !paired;
-    if (!info.omni.available) $('live').checked = false;
+    omniReady = info.omni.available;
+    $('ask').disabled = !omniReady || !paired;
     $('omni-note').textContent = info.omni.available
-      ? 'OMNI is ready. Leave the switch off for free practice. One request makes one paid call.'
-      : 'Paid OMNI calls are disabled on the Pi. Camera, microphone preview and manual controls still work.';
+      ? 'Every Send request makes one paid OMNI call. Recording and camera preview are free.'
+      : 'No API key on the Pi. Set YIBU_API_KEY in the Pi .env to use voice. Manual controls still work.';
     $('arm-state').textContent = info.arm.simulated ? 'Simulated' : info.arm.connected ? 'Nano connected' : 'Nano not connected yet';
     $('secure-help').hidden = window.isSecureContext;
   } catch(e) { $('connection').textContent = 'Pi offline'; $('status').textContent = e.message; }
@@ -64,10 +64,6 @@ $('putdown').onclick = () => task('/putdown', {}, 'Putting down');
 document.querySelectorAll('[data-command]').forEach(b => b.onclick = () => command(b.dataset.command));
 $('stop').onclick = () => command('STOP');
 $('command-form').onsubmit = e => { e.preventDefault(); command($('command').value); };
-$('live').onchange = () => {
-  pending = null; $('confirm').hidden = true;
-  $('mode').textContent = $('live').checked ? 'Live · uses credits' : 'Practice · no credits';
-};
 
 function requireMedia() {
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
@@ -99,8 +95,8 @@ function mediaOff() {
   microphone?.getTracks().forEach(t=>t.stop()); microphone=null;
   camera?.getTracks().forEach(t=>t.stop()); camera=null;
   $('preview').srcObject=null; $('camera-placeholder').hidden=false;
-  $('camera-state').textContent='Camera off'; $('record').textContent='Record voice';
-  $('record').disabled=false;
+  $('camera-state').textContent='Camera off';
+  micState('idle');
   $('media-status').textContent='Camera and microphone are off.';
 }
 $('media-off').onclick = mediaOff;
@@ -136,22 +132,28 @@ async function wav(blob) {
     return new Blob([buffer],{type:'audio/wav'});
   } finally { await context.close(); }
 }
+// idle | recording | preparing. Record starts, Stop ends; neither one sends.
+function micState(state) {
+  $('record').disabled = state !== 'idle';
+  $('stop-record').disabled = state !== 'recording';
+}
 $('record').onclick = async () => {
-  if(recorder?.state==='recording'){recorder.stop();return;}
+  if (recorder?.state === 'recording') return;
   const epoch = ++recordingEpoch;
   try {
     requireMedia();
     if (!window.MediaRecorder) throw new Error('Recording is unavailable in this browser; try current Safari.');
-    $('record').disabled=true;
+    micState('preparing');
     microphone=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});
     if (epoch!==recordingEpoch) {microphone.getTracks().forEach(t=>t.stop());return;}
     const type=['audio/mp4','audio/webm;codecs=opus','audio/webm'].find(t=>MediaRecorder.isTypeSupported(t));
     const active=new MediaRecorder(microphone,type?{mimeType:type}:{});
     recorder=active;const chunks=[];audioBlob=null;
     active.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
+    // Reached by the Stop button and by the 10 second cap alike.
     active.onstop=async()=>{
       clearTimeout(recordTimer);microphone?.getTracks().forEach(t=>t.stop());microphone=null;
-      $('record').textContent='Record voice';$('record').disabled=true;
+      micState('preparing');
       try {
         if (epoch!==recordingEpoch) return;
         $('record-state').textContent='Preparing audio…';
@@ -160,16 +162,23 @@ $('record').onclick = async () => {
         audioBlob=converted;
         if(playbackUrl)URL.revokeObjectURL(playbackUrl);
         playbackUrl=URL.createObjectURL(audioBlob);$('playback').src=playbackUrl;$('playback').hidden=false;
-        $('record-state').textContent='Voice ready. Tap Send request when you are ready.';
+        $('record-state').textContent='Voice ready. Tap Send request to spend one OMNI call.';
       } catch(e){$('record-state').textContent='Recording failed: '+e.message;}
-      finally{$('record').disabled=false;}
+      finally{micState('idle');}
     };
     active.onerror=()=>{mediaOff();$('record-state').textContent='Microphone recording failed. Try again.';};
-    active.start();$('record').disabled=false;$('record').textContent='Stop recording';
-    $('record-state').textContent='Listening… stops automatically after 10 seconds.';
+    active.start();micState('recording');
+    $('record-state').textContent='Listening… tap Stop recording, or it stops itself after 10 seconds.';
     recordTimer=setTimeout(()=>{if(active.state==='recording')active.stop();},10000);
   } catch(e){mediaOff();$('record-state').textContent=e.message;}
 };
+$('stop-record').onclick = () => { if (recorder?.state === 'recording') recorder.stop(); };
+function confirmLabel(action) {
+  if (action==='PICK_UP') return 'Run: Pick up ('+$('width').value+' cm)';
+  if (action==='PUT_DOWN') return 'Run: Put down';
+  return 'Run: '+action;
+}
+$('width').oninput = () => { if (pending) $('confirm').textContent = confirmLabel(pending); };
 $('ask-form').onsubmit=async e=>{
   e.preventDefault();
   if(asking)return;
@@ -178,18 +187,25 @@ $('ask-form').onsubmit=async e=>{
     if(recorder?.state==='recording')throw new Error('Stop recording before sending.');
     if($('record').disabled)throw new Error('Wait for the audio to finish preparing.');
     asking=true;$('ask').disabled=true;pending=null;$('confirm').hidden=true;
-    const form=new FormData();form.append('text',$('prompt').value);form.append('live',String($('live').checked));
+    const form=new FormData();form.append('text',$('prompt').value);
     const image=await frame();if(image)form.append('photo',image,'frame.jpg');
     if(audioBlob)form.append('audio',audioBlob,'voice.wav');
-    $('reply').textContent=$('live').checked?'OMNI is looking and listening…':'Checking practice request…';
+    $('reply').textContent='OMNI is looking and listening…';
     const result=await api('/interpret',{method:'POST',body:form});
     $('reply').textContent=result.reply;
     $('heard').textContent=result.heard?'Heard: '+result.heard:'';
     pending=result.command;$('confirm').hidden=!pending;
-    $('confirm').textContent='Run: '+(pending||'');
+    if(pending)$('confirm').textContent=confirmLabel(pending);
   }catch(e){$('reply').textContent=e.message;}
-  finally{asking=false;$('ask').disabled=false;}
+  finally{asking=false;$('ask').disabled=!omniReady||!paired;}
 };
-$('confirm').onclick=()=>{if(pending)command(pending);};
+// PICK_UP and PUT_DOWN are tasks, not Nano commands, so they take their own route.
+$('confirm').onclick=()=>{
+  const action=pending;
+  if(!action)return;
+  if(action==='PICK_UP')task('/pickup',{width_cm:$('width').valueAsNumber},'Picking up');
+  else if(action==='PUT_DOWN')task('/putdown',{},'Putting down');
+  else command(action);
+};
 refresh();
 setInterval(()=>{if(!document.hidden)refresh();},10000);
