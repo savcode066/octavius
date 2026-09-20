@@ -9,9 +9,9 @@ const bool YAW_CONTINUOUS = false;
 const int YAW_STOP = 90, YAW_LEFT_SPEED = 87, YAW_RIGHT_SPEED = 93;
 const unsigned long YAW_PULSE_MS = 110;
 const int PITCH_LOW = 60, PITCH_HIGH = 140;
-const int CLAW_LOW = 140, CLAW_HIGH = 60;
+const int CLAW_LOW = 140, CLAW_HIGH = 75;
 // These are requested physical tong positions. The mounted D4 linkage reverses them.
-const int CLAW_OPEN = 120, CLAW_CLOSED = 75;
+const int CLAW_OPEN = 120, CLAW_CLOSED = 60;
 const bool CLAW_REVERSED = true;
 const int CLAW_OPEN_COMMAND = CLAW_REVERSED ? CLAW_LOW + CLAW_HIGH - CLAW_OPEN : CLAW_OPEN;
 const int CLAW_CLOSED_COMMAND = CLAW_REVERSED ? CLAW_LOW + CLAW_HIGH - CLAW_CLOSED : CLAW_CLOSED;
