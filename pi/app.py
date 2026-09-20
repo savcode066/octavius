@@ -2,6 +2,7 @@
 import os
 import secrets
 import time
+import logging
 from collections import defaultdict
 from pathlib import Path
 from threading import Lock
@@ -10,6 +11,14 @@ from flask import Flask, jsonify, request, session, send_from_directory
 
 ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / ".env")
+
+_level_name = os.getenv("OCTAVIUS_LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, _level_name, logging.INFO),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger("octavius.app")
+
 from control import Arm, normalize_command
 from omni import Omni
 
@@ -27,11 +36,17 @@ pair_lock = Lock()
 def guard():
     if request.method == "POST":
         if request.headers.get("X-Octavius") != "1":
+            logger.warning("rejected post path=%s remote=%s reason=missing_header",
+                           request.path, request.remote_addr)
             return jsonify(error="Use the Octavius control page."), 403
         origin = request.headers.get("Origin")
         if origin and origin != request.host_url.rstrip("/"):
+            logger.warning("rejected post path=%s remote=%s reason=origin_mismatch",
+                           request.path, request.remote_addr)
             return jsonify(error="Untrusted origin."), 403
         if request.path != "/pair" and not session.get("paired"):
+            logger.warning("rejected post path=%s remote=%s reason=not_paired",
+                           request.path, request.remote_addr)
             return jsonify(error="Enter the pairing code first."), 401
 
 @app.after_request
@@ -69,12 +84,15 @@ def pair():
             if not attempts[key]:
                 del attempts[key]
         if len(attempts[peer]) >= 5:
+            logger.warning("pair rejected remote=%s reason=rate_limited", peer)
             return jsonify(error="Wait one minute before trying again."), 429
         attempts[peer].append(now)
         code = payload.get("code")
         if not pair_code or not isinstance(code, str) or not secrets.compare_digest(code, pair_code):
+            logger.warning("pair rejected remote=%s reason=invalid_code", peer)
             return jsonify(error="Incorrect pairing code. Find it in the Pi installer output."), 403
         session["paired"] = True
+    logger.info("pair accepted remote=%s", peer)
     return jsonify(ok=True)
 
 @app.post("/command")
@@ -84,12 +102,15 @@ def command():
         if not isinstance(payload, dict):
             raise ValueError("Expected a JSON command.")
         cmd = normalize_command(payload.get("command"))
+        logger.info("command start command=%s remote=%s", cmd, request.remote_addr)
         reply = arm.send(cmd)
+        logger.info("command complete command=%s reply=%s", cmd, reply)
         return jsonify(command=cmd, nano_response=reply)
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
     except Exception as exc:
-        app.logger.warning("Nano communication failed: %s", type(exc).__name__)
+        logger.warning("command failed remote=%s error_type=%s detail=%s",
+                       request.remote_addr, type(exc).__name__, str(exc))
         return jsonify(error="Nano unavailable or busy. Check USB, main sketch, and serial port. " +
                        (str(exc) if isinstance(exc, RuntimeError) else "")), 503
 
@@ -101,17 +122,26 @@ def interpret():
     photo = request.files.get("photo")
     audio = request.files.get("audio")
     try:
-        result = omni.interpret(text, photo.read() if photo else None,
-                                audio.read() if audio else None,
+        photo_data = photo.read() if photo else None
+        audio_data = audio.read() if audio else None
+        logger.info("interpret start remote=%s live=%s text_chars=%d photo_bytes=%d audio_bytes=%d",
+                    request.remote_addr, request.form.get("live") == "true", len(text),
+                    len(photo_data or b""), len(audio_data or b""))
+        result = omni.interpret(text, photo_data,
+                                audio_data,
                                 live=request.form.get("live") == "true")
         # Interpretation never moves hardware. The user confirms via /command.
+        logger.info("interpret complete mode=%s suggested_command=%s", result.get("mode"),
+                    result.get("command"))
         return jsonify(result)
     except ValueError as exc:
+        logger.warning("interpret rejected error=%s", str(exc))
         return jsonify(error=str(exc)), 400
     except RuntimeError as exc:
+        logger.warning("interpret failed error=%s", str(exc))
         return jsonify(error=str(exc)), 502
     except Exception:
-        app.logger.error("OMNI request failed; see private usage ledger.")
+        logger.exception("interpret failed unexpectedly")
         return jsonify(error="Could not process request. No movement sent."), 500
 
 if __name__ == "__main__":

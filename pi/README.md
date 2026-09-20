@@ -102,7 +102,19 @@ sudo systemctl restart octavius
 sudo systemctl status octavius --no-pager
 sudo journalctl -u octavius -n 50 --no-pager
 curl --cacert ~/pi/certs/ca.crt https://127.0.0.1:5000/health
+
+The service writes its application and Gunicorn logs to the Pi's system journal,
+which avoids filling the SD card with a second log file. Follow live logs while
+pressing a phone control:
+
+```bash
+sudo journalctl -u octavius.service -f -o cat
 ```
+
+Useful messages include the detected serial devices, the selected Nano port,
+the command sent, the Nano reply, serial timeouts, and OMNI request status.
+Media bytes are counted for diagnosis, but audio, images, transcripts, and API
+keys are not written to the journal. Press Ctrl+C to stop following the logs.
 
 The server staying online does not itself ensure the hotspot stays enabled:
 keep the NetworkManager Hotspot profile set to autoconnect.

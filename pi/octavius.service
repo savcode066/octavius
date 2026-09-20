@@ -8,7 +8,7 @@ Type=simple
 User=octavius
 WorkingDirectory=/home/octavius/pi
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/home/octavius/pi/.venv/bin/gunicorn --workers 1 --threads 8 --timeout 60 --bind 0.0.0.0:5000 --certfile /home/octavius/pi/certs/server.crt --keyfile /home/octavius/pi/certs/server.key app:app
+ExecStart=/home/octavius/pi/.venv/bin/gunicorn --workers 1 --threads 8 --timeout 60 --bind 0.0.0.0:5000 --certfile /home/octavius/pi/certs/server.crt --keyfile /home/octavius/pi/certs/server.key --access-logfile - --error-logfile - --capture-output --log-level info app:app
 UMask=0077
 NoNewPrivileges=true
 SupplementaryGroups=dialout

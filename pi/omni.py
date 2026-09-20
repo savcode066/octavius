@@ -2,6 +2,7 @@
 import base64
 import io
 import json
+import logging
 import os
 import threading
 import time
@@ -11,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 import httpx
 from control import FIXED
+
+logger = logging.getLogger("octavius.omni")
 
 MODELS = {"qwen3.5-omni-flash", "qwen3.5-omni-plus", "qwen3.8-omni-flash"}
 PROMPT = """You are Octavius, a small wearable robotic arm assistant.
@@ -39,18 +42,25 @@ class Omni:
                 "configured": bool(self.key), "enabled": self.enabled}
 
     def interpret(self, text, photo=None, audio=None, live=False):
+        logger.info("interpret requested live=%s text_chars=%d photo_bytes=%d audio_bytes=%d model=%s",
+                    live, len(text or ""), len(photo or b""), len(audio or b""), self.model)
         # This branch precedes all client creation and network access.
         if not live:
+            logger.info("interpret practice mode no_provider_call=true")
             return {"reply": "Practice mode: no API call. Camera and microphone stay local. Use manual controls to move the arm.",
                     "command": None, "heard": text, "mode": "practice"}
         if not self.enabled or not self.key:
+            logger.warning("interpret blocked reason=omni_disabled")
             raise ValueError("OMNI is disabled on the Pi. Enable it in .env when you are ready.")
         if self.model not in MODELS:
+            logger.warning("interpret blocked reason=unsupported_model model=%s", self.model)
             raise ValueError("Select a supported HTTP OMNI model in .env.")
         if not self.lock.acquire(blocking=False):
+            logger.warning("interpret blocked reason=provider_request_in_flight")
             raise ValueError("An OMNI request is already running.")
         try:
             if time.monotonic() - self.last_call < 3:
+                logger.warning("interpret blocked reason=rate_limit")
                 raise ValueError("Wait a few seconds before another paid request.")
             content = [{"type": "text", "text": text or "Listen to my request and use the camera if provided."}]
             if photo:
@@ -73,6 +83,8 @@ class Omni:
                 raise ValueError("Say or type a request first.")
             self.last_call = time.monotonic()
             started = time.monotonic()
+            logger.info("provider request start model=%s photo=%s audio=%s",
+                        self.model, bool(photo), bool(audio))
             record = {"call_id": str(uuid.uuid4()), "timestamp": datetime.now(timezone.utc).isoformat(),
                       "model": self.model, "key_suffix": "..." + self.key[-4:],
                       "purpose": "octavius_multimodal_control", "endpoint": self.endpoint,
@@ -92,6 +104,7 @@ class Omni:
                             {"role": "user", "content": content}],
                             "max_tokens": 300, "temperature": 0.1})
                 record["status_code"] = response.status_code
+                logger.info("provider response status=%s model=%s", response.status_code, self.model)
                 response.raise_for_status()
                 payload = response.json()
                 usage = payload.get("usage") or {}
@@ -113,17 +126,22 @@ class Omni:
                 command = result.get("command")
                 if command is not None and (not isinstance(command, str) or command not in FIXED):
                     raise ValueError("OMNI returned an unsupported action; no movement was sent.")
+                logger.info("provider response accepted model=%s suggested_command=%s",
+                            self.model, command)
                 return {"reply": str(result.get("reply", ""))[:700],
                         "heard": str(result.get("heard", ""))[:500],
                         "command": command, "mode": "live", "usage": usage}
             except httpx.HTTPStatusError as exc:
                 record["error"] = "HTTPStatusError"
+                logger.warning("provider request failed error=http_status status=%s", exc.response.status_code)
                 raise RuntimeError(f"OMNI returned HTTP {exc.response.status_code}. No automatic retry; no movement sent.") from None
             except httpx.RequestError:
                 record["error"] = "NetworkError"
+                logger.warning("provider request failed error=network")
                 raise RuntimeError("OMNI could not be reached. The Pi needs internet as well as the phone connection.") from None
             except (KeyError, TypeError, json.JSONDecodeError):
                 record["error"] = "InvalidResponse"
+                logger.warning("provider request failed error=invalid_response")
                 raise RuntimeError("OMNI response was not valid command JSON. No movement sent.") from None
             finally:
                 record["latency_s"] = round(time.monotonic() - started, 3)

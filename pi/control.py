@@ -3,8 +3,11 @@ import os
 import re
 import threading
 import time
+import logging
 import serial
 from serial.tools import list_ports
+
+logger = logging.getLogger("octavius.control")
 
 FIXED = {"STOP", "HOME", "WAVE", "CLAW_OPEN", "CLAW_CLOSE",
          "PITCH_UP", "PITCH_DOWN", "YAW_LEFT", "YAW_RIGHT"}
@@ -42,8 +45,10 @@ class Arm:
 
     def send(self, command):
         command = normalize_command(command)
+        logger.info("command requested command=%s simulated=%s", command, self.simulate)
         # Never accumulate clicks into a queue of unexpected future movement.
         if not self.lock.acquire(blocking=False):
+            logger.warning("command rejected command=%s reason=busy", command)
             raise RuntimeError("Nano is busy; try again in a moment.")
         try:
             if self.simulate:
@@ -53,25 +58,36 @@ class Arm:
                 if port == "auto":
                     candidates = [p.device for p in list_ports.comports()
                                   if p.vid is not None]
+                    logger.info("serial auto-detect candidates=%s", candidates)
                     if len(candidates) != 1:
+                        logger.error("serial auto-detect failed candidates=%s", candidates)
                         raise RuntimeError("Select OCTAVIUS_SERIAL_PORT in .env; could not identify one Nano.")
                     port = candidates[0]
+                logger.info("serial opening port=%s baud=115200", port)
                 self.connection = serial.Serial(port, 115200, timeout=0.15, write_timeout=1)
                 time.sleep(2)
                 self.connection.reset_input_buffer()
+                logger.info("serial opened port=%s", port)
+            logger.info("serial write command=%s", command)
             self.connection.write((command + "\n").encode("ascii"))
             deadline = time.monotonic() + 3
             while time.monotonic() < deadline:
                 reply = self.connection.readline().decode("ascii", errors="replace").strip()
                 if reply.startswith("OK "):
+                    logger.info("serial reply command=%s reply=%s", command, reply)
                     return reply
                 if reply.startswith("ERR"):
+                    logger.warning("serial rejected command=%s reply=%s", command, reply)
                     raise RuntimeError(reply)
+            logger.error("serial timeout command=%s port=%s", command, self.port)
             raise RuntimeError("Nano did not acknowledge. Upload the main Octavius sketch, not a repeating test.")
-        except (serial.SerialException, OSError, RuntimeError):
+        except (serial.SerialException, OSError, RuntimeError) as exc:
+            logger.warning("serial command failed command=%s error_type=%s detail=%s",
+                           command, type(exc).__name__, str(exc))
             if self.connection:
                 self.connection.close()
                 self.connection = None
+                logger.info("serial connection cleared")
             raise
         finally:
             self.lock.release()
