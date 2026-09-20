@@ -3,26 +3,25 @@
 #include <stdlib.h>
 #include <ctype.h>
 
-// D2 was reported to be continuous rotation. write() controls SPEED on that
-// hardware, not degrees. Set false ONLY if replaced by a positional servo.
-const bool YAW_CONTINUOUS = false;
-const int YAW_STOP = 90, YAW_LEFT_SPEED = 87, YAW_RIGHT_SPEED = 93;
-const unsigned long YAW_PULSE_MS = 110;
+const byte YAW_PIN = 2;
+const byte PITCH_PIN = 3;
+const byte CLAW_PIN = 4;
 
-const int PITCH_LOW = 60, PITCH_HIGH = 140;
+const int YAW_LOW = 0;
+const int YAW_HIGH = 180;
 
-// Claw angles are inverted because of the way the claw is mounted.
-const int CLAW_LOW = 140, CLAW_HIGH = 75;
-const int CLAW_OPEN = 120, CLAW_CLOSED = 60;
-const bool CLAW_REVERSED = true;
+const int PITCH_LOW = 0;
+const int PITCH_HIGH = 180;
 
-const int CLAW_OPEN_COMMAND =
-  CLAW_REVERSED ? CLAW_LOW + CLAW_HIGH - CLAW_OPEN : CLAW_OPEN;
+const int CLAW_LOW = 180;
+const int CLAW_HIGH = 0;
 
-const int CLAW_CLOSED_COMMAND =
-  CLAW_REVERSED ? CLAW_LOW + CLAW_HIGH - CLAW_CLOSED : CLAW_CLOSED;
+const int CLAW_OPEN = 140;
+const int CLAW_CLOSED = 40;
 
-Servo yaw, pitch, claw;
+Servo yaw;
+Servo pitch;
+Servo claw;
 
 int yawAngle = 90;
 int yawTarget = 90;
@@ -30,13 +29,10 @@ int yawTarget = 90;
 int pitchAngle = 90;
 int pitchTarget = 90;
 
-int clawAngle = CLAW_OPEN_COMMAND;
-int clawTarget = CLAW_OPEN_COMMAND;
+int clawAngle = CLAW_OPEN;
+int clawTarget = CLAW_OPEN;
 
-unsigned long yawEnd = 0;
 unsigned long lastStep = 0;
-
-bool yawMoving = false;
 
 byte waveStage = 0;
 
@@ -49,11 +45,6 @@ bool overflow = false;
 
 void stopAll() {
   waveStage = 0;
-  yawMoving = false;
-
-  if (YAW_CONTINUOUS) {
-    yaw.write(YAW_STOP);
-  }
 
   yawTarget = yawAngle;
   pitchTarget = pitchAngle;
@@ -61,22 +52,15 @@ void stopAll() {
 }
 
 void yawMove(bool left) {
-  if (YAW_CONTINUOUS) {
-    yaw.write(left ? YAW_LEFT_SPEED : YAW_RIGHT_SPEED);
-    yawEnd = millis() + YAW_PULSE_MS;
-    yawMoving = true;
-  } else {
-    yawTarget = constrain(
-      yawTarget + (left ? -5 : 5),
-      80,
-      100
-    );
-  }
+  yawTarget = constrain(
+    yawTarget + (left ? -5 : 5),
+    YAW_LOW,
+    YAW_HIGH
+  );
 }
 
 bool moving() {
-  return yawMoving ||
-         yawAngle != yawTarget ||
+  return yawAngle != yawTarget ||
          pitchAngle != pitchTarget ||
          clawAngle != clawTarget;
 }
@@ -93,18 +77,10 @@ void stepServo(Servo &servo, int &current, int target) {
 void tick() {
   unsigned long now = millis();
 
-  if (yawMoving && (long)(now - yawEnd) >= 0) {
-    yaw.write(YAW_STOP);
-    yawMoving = false;
-  }
-
   if (now - lastStep >= 25) {
     lastStep = now;
 
-    if (!YAW_CONTINUOUS) {
-      stepServo(yaw, yawAngle, yawTarget);
-    }
-
+    stepServo(yaw, yawAngle, yawTarget);
     stepServo(pitch, pitchAngle, pitchTarget);
     stepServo(claw, clawAngle, clawTarget);
   }
@@ -191,8 +167,15 @@ void handle(char *line) {
     int value = atoi(arg);
     bool isPitch = !strcmp(verb, "PITCH_ANGLE");
 
-    if (value < (isPitch ? PITCH_LOW : CLAW_LOW) ||
-        value > (isPitch ? PITCH_HIGH : CLAW_HIGH)) {
+    int minimum = isPitch
+      ? PITCH_LOW
+      : min(CLAW_LOW, CLAW_HIGH);
+
+    int maximum = isPitch
+      ? PITCH_HIGH
+      : max(CLAW_LOW, CLAW_HIGH);
+
+    if (value < minimum || value > maximum) {
       Serial.println("ERR angle range");
       return;
     }
@@ -200,10 +183,7 @@ void handle(char *line) {
     if (isPitch) {
       pitchTarget = value;
     } else {
-      clawTarget =
-        CLAW_REVERSED
-          ? CLAW_LOW + CLAW_HIGH - value
-          : value;
+      clawTarget = value;
     }
 
   } else if (arg) {
@@ -223,15 +203,15 @@ void handle(char *line) {
     pitchTarget = min(PITCH_HIGH, pitchAngle + 3);
 
   } else if (!strcmp(verb, "CLAW_OPEN")) {
-    clawTarget = CLAW_OPEN_COMMAND;
+    clawTarget = CLAW_OPEN;
 
   } else if (!strcmp(verb, "CLAW_CLOSE")) {
-    clawTarget = CLAW_CLOSED_COMMAND;
+    clawTarget = CLAW_CLOSED;
 
   } else if (!strcmp(verb, "HOME")) {
     yawTarget = 90;
     pitchTarget = 90;
-    clawTarget = CLAW_OPEN_COMMAND;
+    clawTarget = CLAW_OPEN;
 
   } else if (!strcmp(verb, "WAVE")) {
     savedYaw = yawAngle;
@@ -252,11 +232,11 @@ void handle(char *line) {
 void setup() {
   Serial.begin(115200);
 
-  yaw.attach(2);
-  pitch.attach(3);
-  claw.attach(4);
+  yaw.attach(YAW_PIN);
+  pitch.attach(PITCH_PIN);
+  claw.attach(CLAW_PIN);
 
-  yaw.write(YAW_STOP);
+  yaw.write(yawAngle);
   pitch.write(pitchAngle);
   claw.write(clawAngle);
 
@@ -266,10 +246,11 @@ void setup() {
 void loop() {
   tick();
 
-  for (byte count = 0;
-       count < 32 && Serial.available();
-       ++count) {
-
+  for (
+    byte count = 0;
+    count < 32 && Serial.available();
+    ++count
+  ) {
     char c = Serial.read();
 
     if (c == '\r') {
