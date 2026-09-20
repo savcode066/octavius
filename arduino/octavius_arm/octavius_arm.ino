@@ -40,7 +40,7 @@ void stepYaw(int delta) {
 }
 
 void stepPitch(int delta) {
-  pitchAngle = constrain(pitchAngle + delta, 60, 120);
+  pitchAngle = constrain(pitchAngle + delta, ANGLE_LOW, ANGLE_HIGH);
   pitch.write(pitchAngle);
 }
 

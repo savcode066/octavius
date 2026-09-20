@@ -62,7 +62,7 @@ MIT licensed; see [LICENSE](LICENSE).
 
 The "Take control" panel has **Pick up** and **Put down** buttons and an object width field (cm).
 
-- **Pick up** turns the width into a claw angle, closes the claw to it, then writes pitch 60.
+- **Pick up** turns the width into a claw angle, closes the claw to it, then writes pitch 0.
 - **Put down** writes pitch 110, then opens the claw (angle 110).
 - **STOP MOVEMENT** aborts either one part-way.
 

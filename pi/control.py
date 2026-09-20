@@ -40,11 +40,11 @@ class NanoRejected(RuntimeError):
 TASKS = {"pick_up", "put_down"}
 # The Nano jumps straight to a written angle and reports no motion, so tasks
 # walk the servo there in small timed steps. The pitch limits mirror stepPitch()
-# in the sketch, which clamps to 60..120.
+# in the sketch, which clamps to 0..120.
 RAMP_STEP_DEG = 2
 RAMP_STEP_SECONDS = 0.025
 SETTLE_SECONDS = 0.3
-PITCH_LIMITS = (60, 120)
+PITCH_LIMITS = (0, 120)
 STATUS_REPLY = re.compile(r"OK STATUS yaw=(\d+) pitch=(\d+) claw=(\d+)")
 
 class Arm:

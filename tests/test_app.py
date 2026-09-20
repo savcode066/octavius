@@ -186,22 +186,22 @@ def test_pickup_and_putdown_routes(client):
     pair(client)
     assert client.post("/pickup", json={"width_cm": 8}).status_code == 403
     picked = client.post("/pickup", json={"width_cm": 8}, headers=HEADERS).json
-    assert picked["steps"] == ["CLAW_ANGLE 83", "PITCH_ANGLE 60"] and not picked["aborted"]
+    assert picked["steps"] == ["CLAW_ANGLE 83", "PITCH_ANGLE 0"] and not picked["aborted"]
     assert client.post("/pickup", json={"width_cm": 20}, headers=HEADERS).status_code == 400
     assert client.post("/pickup", json={}, headers=HEADERS).status_code == 400
     put = client.post("/putdown", headers=HEADERS).json
     assert put["steps"] == ["PITCH_ANGLE 110", "CLAW_ANGLE 110"]
 
 def test_task_ramps_each_joint_in_order():
-    arm = _arm(["OK STATUS yaw=90 pitch=90 claw=90"] + ["OK CLAW_ANGLE"] * 4 + ["OK PITCH_ANGLE"] * 15)
+    arm = _arm(["OK STATUS yaw=90 pitch=90 claw=90"] + ["OK CLAW_ANGLE"] * 4 + ["OK PITCH_ANGLE"] * 45)
     arm.simulate = False
     with patch.object(arm, "_pause", return_value=False):
         result = arm.run_task("pick_up", 8)
     sent = [w.decode().strip() for w in arm.connection.written]
     assert sent[0] == "STATUS"
-    assert [c.split()[0] for c in sent[1:]] == ["CLAW_ANGLE"] * 4 + ["PITCH_ANGLE"] * 15
-    assert sent[4] == "CLAW_ANGLE 83" and sent[-1] == "PITCH_ANGLE 60"
-    assert result["steps"] == ["CLAW_ANGLE 83", "PITCH_ANGLE 60"]
+    assert [c.split()[0] for c in sent[1:]] == ["CLAW_ANGLE"] * 4 + ["PITCH_ANGLE"] * 45
+    assert sent[4] == "CLAW_ANGLE 83" and sent[-1] == "PITCH_ANGLE 0"
+    assert result["steps"] == ["CLAW_ANGLE 83", "PITCH_ANGLE 0"]
 
 def test_stop_aborts_a_running_task():
     arm = _arm(["OK STATUS yaw=90 pitch=90 claw=90", "OK CLAW_ANGLE", "OK STOP"])
