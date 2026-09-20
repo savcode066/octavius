@@ -9,17 +9,18 @@ const byte CLAW_PIN = 4;
 
 const int YAW_LOW = 0;
 const int YAW_HIGH = 180;
-const int YAW_STEP = 20;
+const int YAW_STEP = 5;
 
 const int PITCH_LOW = 0;
 const int PITCH_HIGH = 180;
-const int PITCH_STEP = 20;
+const int PITCH_STEP = 5;
 
 const int CLAW_LOW = 180;
 const int CLAW_HIGH = 0;
 
 const int CLAW_OPEN = 140;
 const int CLAW_CLOSED = 40;
+const int CLAW_STEP = 5;
 
 Servo yaw;
 Servo pitch;
@@ -205,10 +206,10 @@ void handle(char *line) {
     pitchTarget = min(PITCH_HIGH, pitchAngle + PITCH_STEP);
 
   } else if (!strcmp(verb, "CLAW_OPEN")) {
-    clawTarget = CLAW_OPEN;
+    clawTarget = min(CLAW_OPEN, clawAngle + CLAW_STEP);
 
   } else if (!strcmp(verb, "CLAW_CLOSE")) {
-    clawTarget = CLAW_CLOSED;
+    clawTarget = max(CLAW_CLOSED, clawAngle - CLAW_STEP);
 
   } else if (!strcmp(verb, "HOME")) {
     yawTarget = 90;
