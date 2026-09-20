@@ -15,11 +15,11 @@ const int PITCH_LOW = 0;
 const int PITCH_HIGH = 180;
 const int PITCH_STEP = 5;
 
-const int CLAW_LOW = 180;
-const int CLAW_HIGH = 0;
+const int CLAW_LOW = 80;
+const int CLAW_HIGH = 125;
 
-const int CLAW_OPEN = 140;
-const int CLAW_CLOSED = 40;
+const int CLAW_OPEN = 125;
+const int CLAW_CLOSED = 80;
 const int CLAW_STEP = 5;
 
 Servo yaw;
