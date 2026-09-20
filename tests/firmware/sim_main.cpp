@@ -31,10 +31,8 @@ static void advance(unsigned long ms) {
 
 static void report(const std::string &instruction) {
   std::printf(
-      "{\"step\": \"%s\", \"yaw\": %d, \"pitch\": %d, \"claw\": %d, "
-      "\"yaw_target\": %d, \"pitch_target\": %d, \"claw_target\": %d}\n",
-      instruction.c_str(), yaw.value, pitch.value, claw.value, yawTarget,
-      pitchTarget, clawTarget);
+      "{\"step\": \"%s\", \"yaw\": %d, \"pitch\": %d, \"claw\": %d}\n",
+      instruction.c_str(), yaw.value, pitch.value, claw.value);
 }
 
 int main() {

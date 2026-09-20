@@ -19,7 +19,7 @@ def main():
             except (EOFError,KeyboardInterrupt): break
             if command in {"QUIT","EXIT"}: break
             if command=="HELP":
-                print("YAW_LEFT YAW_RIGHT PITCH_UP PITCH_DOWN CLAW_INC CLAW_DEC WAVE HOME STOP")
+                print("YAW_LEFT YAW_RIGHT PITCH_UP PITCH_DOWN CLAW_INC CLAW_DEC HOME STOP")
                 print("PITCH_ANGLE 95 | CLAW_ANGLE 100");continue
             if command:
                 try: print(client.post("/command",json={"command":command}).json())

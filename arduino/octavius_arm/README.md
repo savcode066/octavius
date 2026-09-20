@@ -1,15 +1,10 @@
 # Main Nano sketch
 
-| Signal | Joint | Default hardware |
+| Signal | Joint | Hardware |
 | --- | --- | --- |
-| D2 | Left/right yaw | Continuous rotation |
+| D2 | Left/right yaw | Positional |
 | D3 | Up/down pitch | Positional |
 | D4 | Claw | Positional |
-
-D2 was reported to spin continuously. `write(90)` is approximately stop on
-that servo; it does NOT mean 90 degrees. Calibrate YAW_STOP with the linkage
-detached. Yaw pulses automatically stop after 110 ms.
-If D2 was replaced with a positional servo, set `YAW_CONTINUOUS = false`.
 
 Upload this sketch instead of a test sketch for Pi control. The baud rate is
 115200 with newline-terminated commands. Select the exact physical Nano model.
@@ -20,21 +15,15 @@ grounds and Nano GND together. Signal wires go to D2/D3/D4; the Pi connects
 to Nano USB. Verify the powered CrunchLabs board's pinout and power routing
 before combining its power with Nano USB.
 
-Yaw and pitch move in 3-degree steps, the claw in 2-degree steps, and taps
-accumulate onto the target. Yaw and pitch are limited to 60–140 and the claw
-to 80–125 (CLAW_MIN/CLAW_MAX). A limit wider than the linkage can reach makes
-the servo stall at its stop while the target counts past it, so the joint then
-ignores presses until the opposite direction unwinds that gap. Calibrate
-these values with the linkage disconnected;
-slow movement does not limit force. Startup positions are commanded immediately.
+Every joint starts at 90 degrees and moves 5 degrees per press, applied as soon
+as the command arrives. `Servo.write()` accepts 0 through 180 and clamps
+anything outside that, so those are the limits; reaching further would need
+`writeMicroseconds()`. Nothing here senses where the arm really is, so a press
+against a mechanical stop still counts. Lower `YAW_STEP`, `PITCH_STEP` or
+`CLAW_STEP` for finer control.
 
 Commands: YAW_LEFT, YAW_RIGHT, PITCH_UP, PITCH_DOWN, CLAW_INC, CLAW_DEC,
-WAVE, HOME, STOP, PITCH_ANGLE 60..140, CLAW_ANGLE 80..125.
-Commands acknowledge when accepted, not when motion completes.
-Only WAVE blocks further commands; other moves accumulate. STOP is read during movement,
-cancels the wave, and holds positional joints. It does not cut servo power.
-Keep a physical servo power switch accessible.
-
-WAVE lifts slightly, makes balanced short yaw movements, and restores the
-pitch target. Continuous yaw has no position feedback; home and timed return
-cannot recover its exact original orientation.
+HOME, STOP, PITCH_ANGLE 0..180, CLAW_ANGLE 0..180.
+HOME returns all three joints to 90. Nothing moves on its own, so STOP only
+reasserts the current position. It does not cut servo power; keep a physical
+servo power switch accessible.

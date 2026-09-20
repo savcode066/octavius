@@ -66,7 +66,6 @@ Servo supply voltage/current, common ground, signal wiring, and mechanical bindi
 - Voice interpretation is off by default at the team's request. Recording audio does not itself move the arm. Live interpretation needs the server setting enabled, a working API key, internet access from the Pi, and the phone's live toggle. A suggested command still requires confirmation.
 - Live OMNI audio/image interpretation has not been verified with a real provider response in this review. Existing integration tests mock the provider. Camera and microphone access alone do not prove voice control works end to end.
 - The implementation sends a voice clip and an optional still frame per request. Continuous realtime audio/video and autonomous object pickup are not implemented.
-- With continuous rotation enabled, `HOME` does not return D2 to its original orientation. It sets an internal angle target that continuous yaw does not use. `WAVE` uses balanced timed pulses, which cannot establish an exact physical return position without feedback.
 
 ## Previously reported issues that are resolved or corrected in code
 

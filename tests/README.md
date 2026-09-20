@@ -19,9 +19,9 @@ Run it with the arm linkage disconnected first. If the direction is reversed,
 swap `YAW_LEFT` and `YAW_RIGHT`. If it moves too far, reduce the difference
 between those values and `YAW_HOME`.
 
-## D2 and D3 sequence test
+## Main sketch logic
 
-Open `d2_d3_wave/d2_d3_wave.ino` in Arduino IDE and upload it to the Nano.
-The test lifts D3, waves D2 left-right-left, returns D2 to home, lowers D3,
-waits three seconds, and repeats. It uses small angles and slow one-degree
-steps.
+`test_firmware.py` compiles `arduino/octavius_arm` for the desktop with g++,
+using the stand-ins in `firmware/`, and drives it through recorded click
+patterns. A simulated servo always lands on the angle it is given, so these
+cover the stepping and limit logic only, never physical movement.

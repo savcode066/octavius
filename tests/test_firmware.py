@@ -1,7 +1,7 @@
 """Compile the Nano sketch for the desktop and drive it through real click patterns.
 
-These cover the stepping and limit logic only. A simulated servo always reaches
-its target, so nothing here proves the physical arm moves.
+These cover the stepping and limit logic only. A simulated servo always lands on
+the angle it is given, so nothing here proves the physical arm moves.
 """
 import json
 import shutil
@@ -15,9 +15,9 @@ FIRMWARE = ROOT / "tests" / "firmware"
 SKETCH = ROOT / "arduino" / "octavius_arm"
 
 # Keep in step with the sketch constants.
-PITCH_LOW, PITCH_HIGH, PITCH_STEP = 60, 140, 3
-CLAW_MIN, CLAW_MAX, CLAW_STEP = 80, 125, 2
-CLAW_HOME = (CLAW_MIN + CLAW_MAX) // 2
+ANGLE_LOW, ANGLE_HIGH = 0, 180
+YAW_STEP = PITCH_STEP = CLAW_STEP = 5
+START = 90
 
 
 @pytest.fixture(scope="session")
@@ -41,53 +41,62 @@ def run(simulator, script):
     return [json.loads(line) for line in result.stdout.splitlines()]
 
 
-def taps(command, count, gap=200):
-    """A burst of button presses at a realistic phone tapping rate."""
-    return [line for _ in range(count) for line in (command, f"@{gap}")]
+def final(states):
+    """The last reported position. The very last line is the serial transcript."""
+    return states[-2]
 
 
-def test_claw_moves_one_step_per_press(simulator):
-    states = run(simulator, taps("CLAW_DEC", 4) + ["@500"])
-    positions = [s["claw"] for s in states if s["step"].startswith("@")]
-    assert positions[:4] == [CLAW_HOME - CLAW_STEP * n for n in range(1, 5)]
+def test_one_press_moves_one_step(simulator):
+    states = run(simulator, ["PITCH_UP", "PITCH_UP", "PITCH_DOWN"])
+    assert [s["pitch"] for s in states[1:4]] == [
+        START - PITCH_STEP, START - PITCH_STEP * 2, START - PITCH_STEP]
 
 
-def test_claw_needs_many_presses_to_cross_its_range(simulator):
-    """The old 5 degree step crossed the range in 5 presses, which read as on/off."""
-    span = (CLAW_MAX - CLAW_MIN) // CLAW_STEP
-    assert span >= 20
-    states = run(simulator, taps("CLAW_DEC", span) + ["@2000"])
-    assert states[-2]["claw"] == CLAW_MIN
+def test_presses_reach_both_ends(simulator):
+    up = run(simulator, ["PITCH_UP"] * 40)
+    down = run(simulator, ["PITCH_DOWN"] * 40)
+    assert final(up)["pitch"] == ANGLE_LOW
+    assert final(down)["pitch"] == ANGLE_HIGH
 
 
-def test_pitch_stops_at_the_calibrated_limit(simulator):
-    """Replays the 117 presses from the 2026-09-20 log that drove pitch to 0."""
-    states = run(simulator, taps("PITCH_UP", 117) + ["@3000"])
-    assert states[-2]["pitch"] == PITCH_LOW
-    assert states[-2]["pitch_target"] == PITCH_LOW
+def test_yaw_and_claw_reach_both_ends(simulator):
+    states = run(simulator, ["YAW_RIGHT"] * 40 + ["CLAW_INC"] * 40)
+    assert final(states)["yaw"] == ANGLE_HIGH
+    assert final(states)["claw"] == ANGLE_HIGH
+    states = run(simulator, ["YAW_LEFT"] * 40 + ["CLAW_DEC"] * 40)
+    assert final(states)["yaw"] == ANGLE_LOW
+    assert final(states)["claw"] == ANGLE_LOW
 
 
-def test_target_never_runs_past_the_limit(simulator):
-    """A target parked beyond the stop is what makes the joint ignore presses."""
-    states = run(simulator, taps("PITCH_UP", 117) + taps("PITCH_DOWN", 1) + ["@500"])
-    assert min(s["pitch_target"] for s in states if "pitch_target" in s) == PITCH_LOW
-    assert states[-2]["pitch"] == PITCH_LOW + PITCH_STEP
+def test_a_limit_never_costs_a_press_coming_back(simulator):
+    """Pressing past the end must not bank presses that the way back has to undo."""
+    states = run(simulator, ["PITCH_UP"] * 100 + ["PITCH_DOWN"])
+    assert final(states)["pitch"] == ANGLE_LOW + PITCH_STEP
 
 
-def test_yaw_is_bounded_in_both_directions(simulator):
-    right = run(simulator, taps("YAW_RIGHT", 60) + ["@3000"])
-    left = run(simulator, taps("YAW_LEFT", 60) + ["@3000"])
-    assert right[-2]["yaw"] == 140
-    assert left[-2]["yaw"] == 60
+def test_claw_crosses_its_range_in_many_presses(simulator):
+    """The claw reads as on/off if a handful of presses cross the whole range."""
+    assert (ANGLE_HIGH - ANGLE_LOW) // CLAW_STEP >= 20
 
 
-def test_rapid_presses_accumulate_without_a_busy_error(simulator):
-    states = run(simulator, ["CLAW_DEC"] * 5 + ["@1000"])
-    assert states[-2]["claw"] == CLAW_HOME - CLAW_STEP * 5
+def test_home_returns_every_joint_to_its_start(simulator):
+    states = run(simulator, ["YAW_LEFT", "PITCH_UP", "CLAW_DEC", "HOME"])
+    assert final(states) == {"step": "HOME", "yaw": START, "pitch": START, "claw": START}
+
+
+def test_angle_commands_span_the_whole_range(simulator):
+    states = run(simulator, ["CLAW_ANGLE 0", "PITCH_ANGLE 180"])
+    assert states[1]["claw"] == 0
+    assert states[2]["pitch"] == 180
     assert "ERR" not in states[-1]["output"]
 
 
-def test_claw_angle_outside_the_range_is_refused(simulator):
-    states = run(simulator, ["CLAW_ANGLE 60", "@500"])
+def test_angle_above_the_range_is_refused(simulator):
+    states = run(simulator, ["PITCH_ANGLE 181"])
     assert "ERR angle range" in states[-1]["output"]
-    assert states[-2]["claw"] == CLAW_HOME
+    assert states[1]["pitch"] == START
+
+
+def test_wave_is_gone(simulator):
+    states = run(simulator, ["WAVE"])
+    assert "ERR unknown command" in states[-1]["output"]

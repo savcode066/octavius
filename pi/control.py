@@ -9,7 +9,7 @@ from serial.tools import list_ports
 
 logger = logging.getLogger("octavius.control")
 
-FIXED = {"STOP", "HOME", "WAVE", "CLAW_INC", "CLAW_DEC",
+FIXED = {"STOP", "HOME", "CLAW_INC", "CLAW_DEC",
          "PITCH_UP", "PITCH_DOWN", "YAW_LEFT", "YAW_RIGHT"}
 ALIASES = {"LEFT": "YAW_LEFT", "RIGHT": "YAW_RIGHT", "UP": "PITCH_UP",
            "DOWN": "PITCH_DOWN",
@@ -25,8 +25,8 @@ def normalize_command(value):
     verb = ALIASES.get(parts[0], parts[0])
     if verb in FIXED and len(parts) == 1:
         return verb
-    # Must match PITCH_LOW/HIGH and CLAW_MIN/MAX in the Nano sketch.
-    ranges = {"PITCH_ANGLE": (60, 140), "CLAW_ANGLE": (80, 125)}
+    # Servo.write() on the Nano accepts nothing outside this range.
+    ranges = {"PITCH_ANGLE": (0, 180), "CLAW_ANGLE": (0, 180)}
     if verb in ranges and len(parts) == 2 and re.fullmatch(r"[0-9]{1,3}", parts[1]):
         low, high = ranges[verb]
         if low <= int(parts[1]) <= high:
