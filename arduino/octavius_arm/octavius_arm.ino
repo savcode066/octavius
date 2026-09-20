@@ -10,7 +10,7 @@ const int YAW_STOP = 90, YAW_LEFT_SPEED = 87, YAW_RIGHT_SPEED = 93;
 const unsigned long YAW_PULSE_MS = 110;
 const int PITCH_LOW = 70, PITCH_HIGH = 110;
 const int CLAW_LOW = 35, CLAW_HIGH = 80;
-const int CLAW_OPEN = 45, CLAW_CLOSED = 65;
+const int CLAW_OPEN = 65, CLAW_CLOSED = 45;
 Servo yaw, pitch, claw;
 int yawAngle = 90, yawTarget = 90;
 int pitchAngle = 90, pitchTarget = 90;
