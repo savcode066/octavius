@@ -5,7 +5,7 @@
 
 // D2 was reported to be continuous rotation. write() controls SPEED on that
 // hardware, not degrees. Set false ONLY if replaced by a positional servo.
-const bool YAW_CONTINUOUS = true;
+const bool YAW_CONTINUOUS = false;
 const int YAW_STOP = 90, YAW_LEFT_SPEED = 87, YAW_RIGHT_SPEED = 93;
 const unsigned long YAW_PULSE_MS = 110;
 const int PITCH_LOW = 60, PITCH_HIGH = 140;
