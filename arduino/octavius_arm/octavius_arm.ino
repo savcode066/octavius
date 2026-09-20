@@ -9,9 +9,11 @@ const byte CLAW_PIN = 4;
 
 const int YAW_LOW = 0;
 const int YAW_HIGH = 180;
+const int YAW_STEP = 20;
 
 const int PITCH_LOW = 0;
 const int PITCH_HIGH = 180;
+const int PITCH_STEP = 20;
 
 const int CLAW_LOW = 180;
 const int CLAW_HIGH = 0;
@@ -53,7 +55,7 @@ void stopAll() {
 
 void yawMove(bool left) {
   yawTarget = constrain(
-    yawTarget + (left ? -5 : 5),
+    yawTarget + (left ? -YAW_STEP : YAW_STEP),
     YAW_LOW,
     YAW_HIGH
   );
@@ -197,10 +199,10 @@ void handle(char *line) {
     yawMove(false);
 
   } else if (!strcmp(verb, "PITCH_UP")) {
-    pitchTarget = max(PITCH_LOW, pitchAngle - 3);
+    pitchTarget = max(PITCH_LOW, pitchAngle - PITCH_STEP);
 
   } else if (!strcmp(verb, "PITCH_DOWN")) {
-    pitchTarget = min(PITCH_HIGH, pitchAngle + 3);
+    pitchTarget = min(PITCH_HIGH, pitchAngle + PITCH_STEP);
 
   } else if (!strcmp(verb, "CLAW_OPEN")) {
     clawTarget = CLAW_OPEN;
@@ -217,7 +219,7 @@ void handle(char *line) {
     savedYaw = yawAngle;
     savedPitch = pitchAngle;
 
-    pitchTarget = max(PITCH_LOW, pitchAngle - 3);
+    pitchTarget = max(PITCH_LOW, pitchAngle - PITCH_STEP);
     waveStage = 1;
 
   } else {
