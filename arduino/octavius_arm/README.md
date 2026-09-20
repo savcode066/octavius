@@ -20,12 +20,14 @@ grounds and Nano GND together. Signal wires go to D2/D3/D4; the Pi connects
 to Nano USB. Verify the powered CrunchLabs board's pinout and power routing
 before combining its power with Nano USB.
 
-Pitch moves in three-degree steps inside 70–110 degrees. Claw moves slowly
-between 45 and 65 degrees. Calibrate these values with the linkage disconnected;
+Pitch moves in three-degree steps inside 60–140 degrees. The requested claw
+positions are open 75 and closed 120; this build's reversed D4 linkage maps
+those to servo commands 125 and 80. Typed claw angles are reversed the same
+way. Calibrate these values with the linkage disconnected;
 slow movement does not limit force. Startup positions are commanded immediately.
 
 Commands: YAW_LEFT, YAW_RIGHT, PITCH_UP, PITCH_DOWN, CLAW_OPEN, CLAW_CLOSE,
-WAVE, HOME, STOP, PITCH_ANGLE 70..110, CLAW_ANGLE 35..80.
+WAVE, HOME, STOP, PITCH_ANGLE 60..140, CLAW_ANGLE 60..140.
 Commands acknowledge when accepted, not when motion completes.
 Busy commands are rejected instead of queued. STOP is read during movement,
 cancels the wave, and holds positional joints. It does not cut servo power.

@@ -8,13 +8,17 @@
 const bool YAW_CONTINUOUS = true;
 const int YAW_STOP = 90, YAW_LEFT_SPEED = 87, YAW_RIGHT_SPEED = 93;
 const unsigned long YAW_PULSE_MS = 110;
-const int PITCH_LOW = 70, PITCH_HIGH = 110;
-const int CLAW_LOW = 35, CLAW_HIGH = 80;
-const int CLAW_OPEN = 65, CLAW_CLOSED = 45;
+const int PITCH_LOW = 60, PITCH_HIGH = 140;
+const int CLAW_LOW = 60, CLAW_HIGH = 140;
+// These are requested physical tong positions. The mounted D4 linkage reverses them.
+const int CLAW_OPEN = 75, CLAW_CLOSED = 120;
+const bool CLAW_REVERSED = true;
+const int CLAW_OPEN_COMMAND = CLAW_REVERSED ? CLAW_LOW + CLAW_HIGH - CLAW_OPEN : CLAW_OPEN;
+const int CLAW_CLOSED_COMMAND = CLAW_REVERSED ? CLAW_LOW + CLAW_HIGH - CLAW_CLOSED : CLAW_CLOSED;
 Servo yaw, pitch, claw;
 int yawAngle = 90, yawTarget = 90;
 int pitchAngle = 90, pitchTarget = 90;
-int clawAngle = CLAW_OPEN, clawTarget = CLAW_OPEN;
+int clawAngle = CLAW_OPEN_COMMAND, clawTarget = CLAW_OPEN_COMMAND;
 unsigned long yawEnd = 0, lastStep = 0;
 bool yawMoving = false;
 byte waveStage = 0;
@@ -99,16 +103,17 @@ void handle(char *line) {
     if (value < (isPitch ? PITCH_LOW : CLAW_LOW) || value > (isPitch ? PITCH_HIGH : CLAW_HIGH)) {
       Serial.println("ERR angle range"); return;
     }
-    if (isPitch) pitchTarget = value; else clawTarget = value;
+    if (isPitch) pitchTarget = value;
+    else clawTarget = CLAW_REVERSED ? CLAW_LOW + CLAW_HIGH - value : value;
   } else if(arg) { Serial.println("ERR unexpected argument"); return;
   } else if(!strcmp(verb,"YAW_LEFT")) yawMove(true);
   else if(!strcmp(verb,"YAW_RIGHT")) yawMove(false);
   else if(!strcmp(verb,"PITCH_UP")) pitchTarget = max(PITCH_LOW, pitchAngle-3);
   else if(!strcmp(verb,"PITCH_DOWN")) pitchTarget = min(PITCH_HIGH, pitchAngle+3);
-  else if(!strcmp(verb,"CLAW_OPEN")) clawTarget = CLAW_OPEN;
-  else if(!strcmp(verb,"CLAW_CLOSE")) clawTarget = CLAW_CLOSED;
+  else if(!strcmp(verb,"CLAW_OPEN")) clawTarget = CLAW_OPEN_COMMAND;
+  else if(!strcmp(verb,"CLAW_CLOSE")) clawTarget = CLAW_CLOSED_COMMAND;
   else if(!strcmp(verb,"HOME")) {
-    yawTarget = 90; pitchTarget = 90; clawTarget = CLAW_OPEN;
+    yawTarget = 90; pitchTarget = 90; clawTarget = CLAW_OPEN_COMMAND;
   } else if(!strcmp(verb,"WAVE")) {
     savedYaw=yawAngle; savedPitch=pitchAngle;
     pitchTarget=max(PITCH_LOW,pitchAngle-3); waveStage=1;
@@ -118,8 +123,8 @@ void handle(char *line) {
 
 void setup() {
   Serial.begin(115200);
-  yaw.write(YAW_STOP); pitch.write(pitchAngle); claw.write(clawAngle);
   yaw.attach(2); pitch.attach(3); claw.attach(4);
+  yaw.write(YAW_STOP); pitch.write(pitchAngle); claw.write(clawAngle);
   Serial.println("Octavius ready");
 }
 

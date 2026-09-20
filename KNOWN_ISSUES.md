@@ -52,12 +52,12 @@ The code problems below are confirmed, but none has been established as the caus
 | Pin | Current behavior | What remains unverified |
 | --- | --- | --- |
 | D2 | Continuous rotation; left `87`, right `93`, stop `90`; each movement lasts 110 ms | Whether these speed values overcome the servo's deadband and the arm's load, and whether `90` actually stops it |
-| D3 | Positional; up reduces the target by 3 degrees, down increases it by 3; range 70 to 110 | Physical direction and visible movement under load; pressing farther at a limit deliberately does nothing |
-| D4 | Positional; open `65`, closed `45` | Whether those positions actually open and close the mounted tongs without binding |
+| D3 | Positional; up reduces the target by 3 degrees, down increases it by 3; range 60 to 140 | Physical direction and visible movement under load; pressing farther at a limit deliberately does nothing |
+| D4 | Positional; requested open `75`, closed `120`; reversed linkage sends servo commands 125 and 80 | Whether those positions actually open and close the mounted tongs without binding |
 
-Only D4 was reversed in the latest code. D2 and D3 were left as requested. The team has not yet confirmed successful operation after uploading that revision. Reversing the two claw constants does not establish correct physical endpoints.
+Only D4 was reversed in the latest code. D2 and D3 directions were left as requested. The team has not yet confirmed successful operation after uploading that revision. The requested claw positions are mapped through the reversed linkage, but this does not establish correct physical endpoints.
 
-The normal claw targets are 20 degrees apart, but this is not a universal movement limit. Startup immediately commands the open position from an unknown physical position. Typed `CLAW_ANGLE` commands accept 35 through 80, a 45-degree span. A true 20-degree operating window requires calibrated endpoints applied consistently to every claw command.
+The normal requested claw targets are 45 degrees apart, but this is not a universal movement limit. Startup immediately commands the open position from an unknown physical position. Typed `CLAW_ANGLE` commands accept 60 through 140, and the reversed linkage maps those requests before sending them to D4. Calibrate endpoints with the linkage disconnected.
 
 Servo supply voltage/current, common ground, signal wiring, and mechanical binding have not been measured in this review. They remain possible causes of no movement, not diagnosed faults.
 
@@ -72,7 +72,7 @@ Servo supply voltage/current, common ground, signal wiring, and mechanical bindi
 
 - Website access: an old Python process occupied port 5000 and the old service repeatedly failed. After switching to the supplied Gunicorn service, the team obtained HTTP 200 health responses and confirmed the site loaded. A hotspot firewall block was not established by the earlier evidence.
 - Camera and microphone permission: the team explicitly confirmed both now work. They should not be treated as current blockers.
-- D4 direction: the repository now contains open `65` and closed `45` in commit `103c68c`. Physical verification is still pending.
+- D4 direction and calibration: the repository now requests open `75` and closed `120`, reverses them for the D4 linkage, and allows 60 through 140. Physical verification is still pending.
 
 ## Next diagnostic steps
 
