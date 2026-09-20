@@ -15,8 +15,8 @@ const int PITCH_LOW = 0;
 const int PITCH_HIGH = 180;
 const int PITCH_STEP = 5;
 
-const int CLAW_LOW = 80;
-const int CLAW_HIGH = 125;
+const int CLAW_LOW = 0;
+const int CLAW_HIGH = 180;
 
 const int CLAW_OPEN = 125;
 const int CLAW_CLOSED = 80;
