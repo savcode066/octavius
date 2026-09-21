@@ -1,6 +1,7 @@
 # Octavius
 
-HTN '26
+1st Place - Huawei OMNI Live Challenge @ Hack the North '26
+
 A backpack robotic arm controlled from an iPhone, with optional voice and camera
 understanding through the Huawei OMNI Live challenge's Yibu API.
 
